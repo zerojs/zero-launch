@@ -81,6 +81,7 @@ extension CAGridView {
     }
 
     func handleScrollWheel(with event: NSEvent) {
+        resumeDisplayLink()
         // Prefer horizontal movement; vertical precise input can be flipped separately.
         let deltaX = event.scrollingDeltaX
         let deltaY = event.scrollingDeltaY
@@ -248,6 +249,7 @@ extension CAGridView {
 
     override func mouseDown(with event: NSEvent) {
         guard !externalAppDragSessionActive else { return }
+        resumeDisplayLink()
         // 确保成为第一响应者，这样后续的滚轮事件才能被接收
         window?.makeFirstResponder(self)
 
@@ -1000,8 +1002,7 @@ extension CAGridView {
     }
 
     func currentLabelColor() -> NSColor {
-        let match = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
-        return match == .darkAqua ? .white : .black
+        LaunchNextLabelColor(customHex: labelColorHex, appearance: effectiveAppearance)
     }
 
     func isPointInFolderDropZone(_ point: CGPoint, targetIndex: Int) -> Bool {

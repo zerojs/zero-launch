@@ -59,6 +59,8 @@ enum LocalizationKey: String {
     case iconHorizontalSpacing
     case iconVerticalSpacing
     case labelFontSize
+    case iconLabelColorTitle
+    case iconLabelColorFollowSystem
     case iconLabelFontWeight
     case folderDropZoneSize
     case folderDropZoneSizeHint
@@ -590,6 +592,8 @@ final class LocalizationManager {
                 .iconHorizontalSpacing: "Horizontal spacing",
                 .iconVerticalSpacing: "Vertical spacing",
                 .labelFontSize: "Label font size",
+                .iconLabelColorTitle: "Icon label color",
+                .iconLabelColorFollowSystem: "Match system appearance",
                 .iconLabelFontWeight: "Icon label weight",
                 .folderDropZoneSize: "Folder drop zone size",
                 .folderDropZoneSizeHint: "Smaller values reduce accidental folder creation when dragging icons in windowed mode.",
@@ -1417,6 +1421,8 @@ final class LocalizationManager {
                 .iconHorizontalSpacing: "横向间距",
                 .iconVerticalSpacing: "纵向间距",
                 .labelFontSize: "标签字体大小",
+                .iconLabelColorTitle: "图标文字颜色",
+                .iconLabelColorFollowSystem: "跟随系统深浅色",
                 .iconLabelFontWeight: "图标文字粗细",
                 .folderDropZoneSize: "文件夹目标区域大小",
                 .folderDropZoneSizeHint: "减小该值可降低在窗口模式拖动时误建文件夹的概率。",

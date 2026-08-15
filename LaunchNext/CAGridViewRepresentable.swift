@@ -36,6 +36,7 @@ struct CAGridViewRepresentable: NSViewRepresentable {
         view.pageSpacing = pageSpacing
         view.labelFontSize = CGFloat(appStore.iconLabelFontSize)
         view.labelFontWeight = nsFontWeight(for: appStore.iconLabelFontWeight)
+        view.labelColorHex = appStore.iconLabelColorHex.isEmpty ? nil : appStore.iconLabelColorHex
         view.showLabels = appStore.showLabels
         view.isLayoutLocked = appStore.isLayoutLocked
         view.folderDropZoneScale = CGFloat(appStore.folderDropZoneScale)
@@ -210,6 +211,7 @@ struct CAGridViewRepresentable: NSViewRepresentable {
                             nsView.pageSpacing != pageSpacing ||
                             nsView.labelFontSize != CGFloat(appStore.iconLabelFontSize) ||
                             nsView.labelFontWeight != nsFontWeight(for: appStore.iconLabelFontWeight) ||
+                            nsView.labelColorHex != (appStore.iconLabelColorHex.isEmpty ? nil : appStore.iconLabelColorHex) ||
                             nsView.showLabels != appStore.showLabels ||
                             nsView.isLayoutLocked != appStore.isLayoutLocked ||
                             nsView.folderDropZoneScale != CGFloat(appStore.folderDropZoneScale) ||
@@ -225,6 +227,7 @@ struct CAGridViewRepresentable: NSViewRepresentable {
             nsView.pageSpacing = pageSpacing
             nsView.labelFontSize = CGFloat(appStore.iconLabelFontSize)
             nsView.labelFontWeight = nsFontWeight(for: appStore.iconLabelFontWeight)
+            nsView.labelColorHex = appStore.iconLabelColorHex.isEmpty ? nil : appStore.iconLabelColorHex
             nsView.showLabels = appStore.showLabels
             nsView.isLayoutLocked = appStore.isLayoutLocked
             nsView.folderDropZoneScale = CGFloat(appStore.folderDropZoneScale)

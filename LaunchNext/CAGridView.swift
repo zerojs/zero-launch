@@ -4,6 +4,26 @@ import LaunchNextContextMenuCore
 import Combine
 import SwiftUI
 
+// MARK: - 图标文字颜色解析(#RRGGBB,供两个 CA 网格与旧引擎共用)
+
+func LaunchNextParseHexColor(_ hex: String?) -> NSColor? {
+    guard var s = hex?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return nil }
+    if s.hasPrefix("#") { s.removeFirst() }
+    guard s.count == 6, let value = UInt64(s, radix: 16) else { return nil }
+    let r = CGFloat((value >> 16) & 0xFF) / 255.0
+    let g = CGFloat((value >> 8) & 0xFF) / 255.0
+    let b = CGFloat(value & 0xFF) / 255.0
+    return NSColor(red: r, green: g, blue: b, alpha: 1)
+}
+
+func LaunchNextLabelColor(customHex: String?, appearance: NSAppearance) -> NSColor {
+    if let custom = LaunchNextParseHexColor(customHex) {
+        return custom
+    }
+    let match = appearance.bestMatch(from: [.darkAqua, .aqua])
+    return match == .darkAqua ? .white : .black
+}
+
 // MARK: - Safe Array Subscript
 extension Array {
     subscript(safe index: Int) -> Element? {
@@ -36,6 +56,7 @@ final class CAGridView: NSView, CALayerDelegate, NSDraggingSource {
     var rowSpacing: CGFloat = 36 { didSet { updateLayout() } }
     var labelFontSize: CGFloat = 12 { didSet { rebuildLayers() } }  // 默认 12pt，比原来大一点
     var labelFontWeight: NSFont.Weight = .medium { didSet { updateLabelFonts() } }
+    var labelColorHex: String? { didSet { updateLabelColors() } }   // nil/无法解析时跟随系统深浅色
     var showLabels: Bool = true { didSet { updateLabelVisibility() } }
     var isLayoutLocked: Bool = false
     var folderDropZoneScale: CGFloat = CGFloat(AppStore.defaultFolderDropZoneScale)
@@ -48,7 +69,7 @@ final class CAGridView: NSView, CALayerDelegate, NSDraggingSource {
         didSet {
             needsLayoutRefresh = true
             syncBatchSelectionWithItems()
-            rebuildLayers()
+            reconcileLayers(previous: oldValue)
             if enableIconPreload {
                 preloadIcons()
             }
@@ -66,6 +87,10 @@ final class CAGridView: NSView, CALayerDelegate, NSDraggingSource {
     var targetScrollOffset: CGFloat = 0
     var scrollVelocity: CGFloat = 0
     var isScrollAnimating = false
+    // 时间控制的指数收敛速率（1/秒）。23.8 等效于 120Hz 下每帧收敛 18% 的旧手感，
+    // 但动画时长不再随帧率变化。
+    static let scrollConvergenceRate: Double = 23.8
+    var animationDelta: CFTimeInterval = 1.0 / 60.0
     var scrollSensitivity: Double = AppStore.defaultScrollSensitivity
     var reverseWheelPagingDirection: Bool = false
     var trackpadVerticalDirection: AppStore.TrackpadVerticalDirection = .natural
@@ -97,6 +122,19 @@ final class CAGridView: NSView, CALayerDelegate, NSDraggingSource {
     var iconCache: [String: CGImage] = [:]
     let iconCacheLock = NSLock()
     var enableIconPreload: Bool = false
+
+    // 图标渲染使用的后备缩放：优先窗口所在屏，避免多显示器下用 NSScreen.main 错配
+    var iconBackingScale: CGFloat {
+        let windowScale = window?.backingScaleFactor ?? 0
+        if windowScale > 0 { return windowScale }
+        return NSScreen.main?.backingScaleFactor ?? 2.0
+    }
+
+    static let iconCacheCountLimit = 400
+
+    func iconCacheKey(for path: String) -> String {
+        "\(path)#\(iconBackingScale)"
+    }
 
     // 回调
     var onItemClicked: ((LaunchpadItem, Int) -> Void)?
@@ -427,12 +465,15 @@ final class CAGridView: NSView, CALayerDelegate, NSDraggingSource {
     }
 
     @objc func displayLinkFired(_ link: CADisplayLink) {
-        // 只在动画时才更新
+        // 只在动画时才更新；空闲时暂停 displayLink，避免每帧无谓唤醒主线程
         guard isScrollAnimating || isDraggingItem else {
             // 空闲时重置帧计数
             if frameCount > 0 {
                 frameCount = 0
                 lastFrameTime = 0
+            }
+            if !link.isPaused {
+                link.isPaused = true
             }
             return
         }
@@ -448,6 +489,8 @@ final class CAGridView: NSView, CALayerDelegate, NSDraggingSource {
             }
             frameTimes.append(instantFPS)
             currentFPS = frameTimes.reduce(0, +) / Double(frameTimes.count)
+            // 供时间控制的收敛使用（钳制异常跳变）
+            animationDelta = min(max(delta, 1.0 / 240.0), 0.1)
         }
         lastFrameTime = now
 
@@ -464,6 +507,11 @@ final class CAGridView: NSView, CALayerDelegate, NSDraggingSource {
         }
     }
 
+    /// 任何需要 displayLink 驱动的交互（滚动、拖拽、翻页动画）开始前调用
+    func resumeDisplayLink() {
+        displayLink?.isPaused = false
+    }
+
     // MARK: - Scroll Animation
 
     func updateScrollAnimation() {
@@ -475,9 +523,9 @@ final class CAGridView: NSView, CALayerDelegate, NSDraggingSource {
             let diff = targetScrollOffset - scrollOffset
             let snapThreshold: CGFloat = 0.5
             if abs(diff) > snapThreshold {
-                // 非时间控制：指数收敛，距离越远移动越快
-                let t: CGFloat = 0.18
-                scrollOffset += diff * t
+                // 时间控制：每秒固定收敛速率，帧率无关
+                let factor: CGFloat = CGFloat(1.0 - exp(-Self.scrollConvergenceRate * animationDelta))
+                scrollOffset += diff * min(factor, 1)
             } else {
                 scrollOffset = targetScrollOffset
                 scrollVelocity = 0
@@ -595,6 +643,7 @@ final class CAGridView: NSView, CALayerDelegate, NSDraggingSource {
         
         if needsAnimation && animationsEnabled {
             isScrollAnimating = true
+            resumeDisplayLink()
         } else {
             // 立即跳转
             isScrollAnimating = false

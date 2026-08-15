@@ -64,6 +64,8 @@ struct SettingsView: View {
     @State private var showCleanupCommand = false
     @State private var cleanupCommandCopied = false
     @State private var backupRootPath: String = UserDefaults.standard.string(forKey: "backupRootDirectory") ?? ""
+    @State private var iconLabelColorFollowSystem = true
+    @State private var iconLabelColorSelection = Color.white
     @State private var backupRefreshToken = UUID()
     @State private var selectedBackupIDs: Set<String> = []
     @State private var showPerformanceRestartPrompt = false
@@ -507,6 +509,20 @@ private var gestureShowAllInputDevicesBinding: Binding<Bool> {
             }
         }
     )
+}
+
+// MARK: - 图标文字颜色(hex <-> SwiftUI.Color)
+
+private func iconLabelColorHexValue(from color: Color) -> String {
+    let ns = NSColor(color).usingColorSpace(.sRGB) ?? .white
+    return String(format: "#%02X%02X%02X",
+                  Int(round(ns.redComponent * 255)),
+                  Int(round(ns.greenComponent * 255)),
+                  Int(round(ns.blueComponent * 255)))
+}
+
+private func iconLabelColorFromHex(_ hex: String) -> Color {
+    LaunchNextParseHexColor(hex).map { Color(nsColor: $0) } ?? .white
 }
 
 private func layoutModeScopeControl(width: CGFloat = 130) -> some View {
@@ -5479,6 +5495,14 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         }
     }
 
+    private func syncIconLabelColorState() {
+        let hex = appStore.iconLabelColorHex
+        iconLabelColorFollowSystem = hex.isEmpty
+        if !hex.isEmpty {
+            iconLabelColorSelection = iconLabelColorFromHex(hex)
+        }
+    }
+
     private var appearanceQuaternarySection: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 8) {
@@ -5494,6 +5518,32 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
                     Spacer()
                     Text("16pt").font(.footnote)
                 }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(appStore.localized(.iconLabelColorTitle))
+                        .font(.headline)
+                    Spacer()
+                    Toggle(appStore.localized(.iconLabelColorFollowSystem), isOn: $iconLabelColorFollowSystem)
+                        .toggleStyle(.checkbox)
+                    if !iconLabelColorFollowSystem {
+                        ColorPicker("", selection: $iconLabelColorSelection, supportsOpacity: false)
+                            .labelsHidden()
+                    }
+                }
+            }
+            .onAppear { syncIconLabelColorState() }
+            .onChange(of: iconLabelColorFollowSystem) { _, followSystem in
+                if followSystem {
+                    appStore.iconLabelColorHex = ""
+                } else {
+                    appStore.iconLabelColorHex = iconLabelColorHexValue(from: iconLabelColorSelection)
+                }
+            }
+            .onChange(of: iconLabelColorSelection) { _, newColor in
+                guard !iconLabelColorFollowSystem else { return }
+                appStore.iconLabelColorHex = iconLabelColorHexValue(from: newColor)
             }
 
             VStack(alignment: .leading, spacing: 8) {

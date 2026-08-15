@@ -36,6 +36,7 @@ struct CAFolderGridViewRepresentable: NSViewRepresentable {
         view.iconSize = iconSize
         view.labelFontSize = CGFloat(appStore.iconLabelFontSize)
         view.labelFontWeight = nsFontWeight(for: appStore.iconLabelFontWeight)
+        view.labelColorHex = appStore.iconLabelColorHex.isEmpty ? nil : appStore.iconLabelColorHex
         view.showLabels = appStore.showLabels
         view.hoverMagnificationEnabled = appStore.enableHoverMagnification
         view.hoverMagnificationScale = CGFloat(appStore.hoverMagnificationScale)

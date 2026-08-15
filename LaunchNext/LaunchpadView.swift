@@ -455,6 +455,16 @@ struct LaunchpadView: View {
         ZStack {
             LaunchpadBackgroundImageView(image: displayedBackgroundImage)
 
+            // 空白点击捕获层:垫在所有内容之下,AppKit 命中测试自上而下,
+            // 网格/搜索框/页点等交互视图先消费各自点击,只有纯空白区域的
+            // 点击会落到这里并关闭面板。不能用 SwiftUI 的 onTapGesture 挂在
+            // 根容器上——NSViewRepresentable(网格)不会向 SwiftUI 手势系统
+            // 声明"已消费",会导致点击图标时误触关闭。
+            BlankAreaClickCatcher {
+                guard !appStore.isSetting, appStore.openFolder == nil else { return }
+                AppDelegate.shared?.hideWindow()
+            }
+
             launchpadBackdropLayer
 
             launchpadStyledContent
@@ -3363,16 +3373,14 @@ extension LaunchpadView {
                 let clampedLocal = min(desiredLocal, pageSlice.count)
                 pageSlice.insert(moving, at: clampedLocal)
                 newItems.replaceSubrange(pageStart..<pageEnd, with: pageSlice)
+                // 赋值前完成页内压缩：单次赋值、单次保存，
+                // 避免 0.1s 后的第二次 items 重赋值与随之而来的重复防抖保存
+                let compacted = appStore.precompactedItems(newItems)
                 withAnimation(LNAnimations.springFast) {
-                    appStore.items = newItems
+                    appStore.items = compacted
                 }
                 appStore.triggerGridRefresh()
                 appStore.saveAllOrder()
-                
-                // 同页内拖拽结束后也进行压缩，确保empty项目移动到页面末尾
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    appStore.compactItemsWithinPages()
-                }
             } else {
                 // 跨页拖拽：使用级联插入逻辑
                 appStore.moveItemAcrossPagesWithCascade(item: dragging, to: finalIndex)

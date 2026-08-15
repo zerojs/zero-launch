@@ -19,6 +19,7 @@ final class BackgroundImageController: ObservableObject {
 
     private enum CacheKey: Equatable {
         case desktop(DesktopWindow)
+        case desktopFile(path: String, fileSize: Int, modificationTime: TimeInterval)
         case custom(path: String, fileSize: Int, modificationTime: TimeInterval, targetMaxDimension: Int)
     }
 
@@ -77,7 +78,9 @@ final class BackgroundImageController: ObservableObject {
             let identity = RequestIdentity.desktop(displayID: displayID)
             prepare(for: identity)
             refreshDesktop(
+                screen: screen,
                 displayID: displayID,
+                targetMaxDimension: targetMaxDimension,
                 force: forceDesktopRefresh
             )
         case .customImage:
@@ -123,7 +126,12 @@ final class BackgroundImageController: ObservableObject {
         content = nil
     }
 
-    private func refreshDesktop(displayID: CGDirectDisplayID, force: Bool) {
+    private func refreshDesktop(
+        screen: NSScreen,
+        displayID: CGDirectDisplayID,
+        targetMaxDimension: Int,
+        force: Bool
+    ) {
         loadTask?.cancel()
         loadGeneration += 1
         let generation = loadGeneration
@@ -146,34 +154,101 @@ final class BackgroundImageController: ObservableObject {
                   generation == self.loadGeneration else {
                 return
             }
-            guard let desktopWindow else {
-                self.activeCacheKey = nil
-                self.content = nil
-                return
+
+            if desktopWindow == nil {
+                NSLog("LaunchNext Background: no wallpaper window matched, falling back to desktop image file")
             }
 
-            let cacheKey = CacheKey.desktop(desktopWindow)
-            if !force, self.activeCacheKey == cacheKey, self.content != nil {
-                return
-            }
-
-            let image: CGImage? = await Task.detached(priority: .userInitiated) { () -> CGImage? in
-                autoreleasepool {
-                    guard let captured = Self.capture(windowID: desktopWindow.windowID) else { return nil }
-                    return Self.downsampleCapturedImageIfNeeded(captured)
+            if let desktopWindow {
+                let cacheKey = CacheKey.desktop(desktopWindow)
+                if !force, self.activeCacheKey == cacheKey, self.content != nil {
+                    return
                 }
-            }.value
 
-            guard !Task.isCancelled, generation == self.loadGeneration else { return }
-            guard let image else {
-                self.activeCacheKey = nil
-                self.content = nil
-                return
+                let image: CGImage? = await Task.detached(priority: .userInitiated) { () -> CGImage? in
+                    autoreleasepool {
+                        guard let captured = Self.capture(windowID: desktopWindow.windowID) else { return nil }
+                        return Self.downsampleCapturedImageIfNeeded(captured)
+                    }
+                }.value
+
+                guard !Task.isCancelled, generation == self.loadGeneration else { return }
+                if let image {
+                    self.activeCacheKey = cacheKey
+                    self.content = Content(image: image)
+                    return
+                }
+                // 截取失败(常见于未授予屏幕录制权限),继续尝试文件级回退
             }
 
-            self.activeCacheKey = cacheKey
-            self.content = Content(image: image)
+            await self.refreshDesktopFromFile(
+                screen: screen,
+                targetMaxDimension: targetMaxDimension,
+                generation: generation
+            )
         }
+    }
+
+    /// 无需屏幕录制权限的回退:直接读取系统桌面壁纸文件并解码。
+    private func refreshDesktopFromFile(
+        screen: NSScreen,
+        targetMaxDimension: Int,
+        generation: Int
+    ) async {
+        guard #available(macOS 14.0, *) else {
+            activeCacheKey = nil
+            content = nil
+            return
+        }
+
+        // NSWorkspace 需在主线程调用;仅取 URL,开销可忽略
+        let url = try? NSWorkspace.shared.desktopImageURL(for: screen)
+
+        guard !Task.isCancelled, generation == loadGeneration else { return }
+        guard let url else {
+            activeCacheKey = nil
+            content = nil
+            return
+        }
+
+        let cacheKey: CacheKey? = await Task.detached(priority: .userInitiated) {
+            let path = url.path
+            guard FileManager.default.isReadableFile(atPath: path) else { return CacheKey?.none }
+            let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+            return CacheKey.desktopFile(
+                path: path,
+                fileSize: values?.fileSize ?? 0,
+                modificationTime: values?.contentModificationDate?.timeIntervalSince1970 ?? 0
+            )
+        }.value
+
+        guard !Task.isCancelled, generation == loadGeneration else { return }
+        guard let cacheKey else {
+            NSLog("LaunchNext Background: desktop image file unreadable: \(url.path)")
+            activeCacheKey = nil
+            content = nil
+            return
+        }
+        if activeCacheKey == cacheKey, content != nil {
+            return
+        }
+
+        let image: CGImage? = await Task.detached(priority: .userInitiated) {
+            autoreleasepool {
+                Self.decodeCustomImage(at: url, targetMaxDimension: targetMaxDimension)
+            }
+        }.value
+
+        guard !Task.isCancelled, generation == loadGeneration else { return }
+        guard let image else {
+            activeCacheKey = nil
+            content = nil
+            return
+        }
+
+        activeCacheKey = cacheKey
+        content = Content(image: image)
+        NSLog("LaunchNext Background: loaded desktop wallpaper file: \(url.path)")
     }
 
     private func refreshCustom(path: String, targetMaxDimension: Int) {
@@ -247,11 +322,12 @@ final class BackgroundImageController: ObservableObject {
             as? [[String: Any]] ?? []
 
         return windows.compactMap { info -> (window: DesktopWindow, score: CGFloat)? in
-            let owner = info[kCGWindowOwnerName as String] as? String ?? ""
             let name = info[kCGWindowName as String] as? String ?? ""
             let normalizedName = name.lowercased()
-            let isWallpaperWindow = (owner == "WindowManager" && normalizedName == "wallpaper")
-                || (owner == "Dock" && normalizedName.hasPrefix("wallpaper"))
+            // 注意:kCGWindowOwnerName 返回的是本地化名称(如中文系统下 Dock 显示为"程序坞"),
+            // 不能按 "Dock"/"WindowManager" 字面匹配。壁纸窗口的稳定特征是
+            // 名字以 "Wallpaper" 开头(形如 "Wallpaper-<UUID>"),再配合覆盖面积校验。
+            let isWallpaperWindow = normalizedName.hasPrefix("wallpaper")
             guard isWallpaperWindow,
                   let windowIDNumber = info[kCGWindowNumber as String] as? NSNumber,
                   let bounds = windowBounds(from: info[kCGWindowBounds as String]) else {
@@ -388,5 +464,40 @@ struct LaunchpadBackgroundImageView: NSViewRepresentable {
         CATransaction.setDisableActions(true)
         nsView.layer?.contents = nil
         CATransaction.commit()
+    }
+}
+
+/// 空白区域点击捕获层:置于 ZStack 底部,仅接收未被上层交互视图
+/// (网格 NSView、搜索框、按钮、页点等)消费的点击。
+final class BlankAreaClickCatcherView: NSView {
+    var onClick: (() -> Void)?
+    private var pressPoint: CGPoint = .zero
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        pressPoint = convert(event.locationInWindow, from: nil)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        let location = convert(event.locationInWindow, from: nil)
+        // 按下与释放位移很小才视为点击(避免把拖拽误判为点击关闭)
+        if hypot(location.x - pressPoint.x, location.y - pressPoint.y) < 5 {
+            onClick?()
+        }
+    }
+}
+
+struct BlankAreaClickCatcher: NSViewRepresentable {
+    let onClick: () -> Void
+
+    func makeNSView(context: Context) -> BlankAreaClickCatcherView {
+        let view = BlankAreaClickCatcherView(frame: .zero)
+        view.onClick = onClick
+        return view
+    }
+
+    func updateNSView(_ nsView: BlankAreaClickCatcherView, context: Context) {
+        nsView.onClick = onClick
     }
 }

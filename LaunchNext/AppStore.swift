@@ -690,6 +690,7 @@ final class AppStore: ObservableObject {
     let searchEngine = LaunchpadSearchEngine()
     @Published var items: [LaunchpadItem] = [] {
         didSet {
+            itemsRevision += 1
             searchEngine.updateIndex(for: items)
         }
     }
@@ -1301,6 +1302,23 @@ final class AppStore: ObservableObject {
 
     func scopedFolderDropZoneScale(for mode: AppearanceLayoutMode) -> Double {
         dualModeAppearanceSettings[mode].folderDropZoneScale
+    }
+
+    static let iconLabelColorHexKey = "iconLabelColorHex"
+
+    /// 自定义图标文字颜色(#RRGGBB);空字符串表示跟随系统深浅色(深色白字/浅色黑字)
+    @Published var iconLabelColorHex: String = {
+        UserDefaults.standard.string(forKey: AppStore.iconLabelColorHexKey) ?? ""
+    }() {
+        didSet {
+            guard iconLabelColorHex != oldValue else { return }
+            UserDefaults.standard.set(iconLabelColorHex, forKey: Self.iconLabelColorHexKey)
+        }
+    }
+
+    /// 旧 SwiftUI 引擎读取自定义标签颜色(不依赖 AppStore 实例)
+    static var customIconLabelNSColor: NSColor? {
+        LaunchNextParseHexColor(UserDefaults.standard.string(forKey: iconLabelColorHexKey))
     }
 
     func setScopedFolderDropZoneScale(_ value: Double, for mode: AppearanceLayoutMode) {
@@ -2246,6 +2264,11 @@ final class AppStore: ObservableObject {
     @Published var gridRefreshTrigger: UUID = UUID()
     @Published var iconCacheRefreshTrigger: UUID = UUID()
     private var folderUpdateScheduled = false
+    private var pendingFolderPreviewCacheClear = false
+    private var skipNextDebouncedSave = false
+    private var itemsRevision = 0
+    private var revisionAtLastExplicitSave = -1
+    private var didCleanLegacyTopItems = false
     private var gridRefreshScheduled = false
     
     var modelContext: ModelContext?
@@ -3268,6 +3291,12 @@ final class AppStore: ObservableObject {
                 guard let self = self, !self.items.isEmpty else { return }
                 // 延迟保存，避免频繁保存
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    // 显式保存后跳过冗余的防抖保存；但若显式保存之后 items 又变过
+                    // （revision 不一致），仍需真正保存
+                    let redundant = self.skipNextDebouncedSave
+                        && self.itemsRevision == self.revisionAtLastExplicitSave
+                    self.skipNextDebouncedSave = false
+                    if redundant { return }
                     self.saveAllOrder()
                 }
             }
@@ -4128,7 +4157,7 @@ final class AppStore: ObservableObject {
             openFolder = updatedFolder
         }
 
-        triggerFolderUpdate()
+        triggerFolderUpdate(clearsPreviewCache: false)
         triggerGridRefresh()
         saveAllOrder()
         return true
@@ -4417,7 +4446,7 @@ final class AppStore: ObservableObject {
 
         // 触发文件夹更新，通知所有相关视图刷新图标
         DispatchQueue.main.async { [weak self] in
-            self?.triggerFolderUpdate()
+            self?.triggerFolderUpdate(clearsPreviewCache: false)
         }
         
         // 触发网格视图刷新，确保界面立即更新
@@ -4464,7 +4493,7 @@ final class AppStore: ObservableObject {
         }
         
         // 立即触发文件夹更新，通知所有相关视图刷新图标和名称
-        triggerFolderUpdate()
+        triggerFolderUpdate(clearsPreviewCache: false)
         
         // 触发网格视图刷新，确保界面立即更新
         triggerGridRefresh()
@@ -4532,7 +4561,7 @@ final class AppStore: ObservableObject {
         }
 
         // 立即触发文件夹更新，通知所有相关视图刷新图标和名称
-        triggerFolderUpdate()
+        triggerFolderUpdate(clearsPreviewCache: false)
 
         // 仅在页内压缩空槽
         compactItemsWithinPages()
@@ -4565,7 +4594,7 @@ final class AppStore: ObservableObject {
         
         
         // 立即触发文件夹更新，通知所有相关视图刷新
-        triggerFolderUpdate()
+        triggerFolderUpdate(clearsPreviewCache: false)
         
         // 触发网格视图刷新，确保界面立即更新
         triggerGridRefresh()
@@ -4599,7 +4628,7 @@ final class AppStore: ObservableObject {
             openFolder = updatedFolder
         }
 
-        triggerFolderUpdate()
+        triggerFolderUpdate(clearsPreviewCache: false)
         triggerGridRefresh()
         refreshCacheAfterFolderOperation()
         saveAllOrder()
@@ -4791,7 +4820,7 @@ final class AppStore: ObservableObject {
 
         compactItemsWithinPages()
         removeEmptyPages()
-        triggerFolderUpdate()
+        triggerFolderUpdate(clearsPreviewCache: false)
         triggerGridRefresh()
         refreshCacheAfterFolderOperation()
         saveAllOrder()
@@ -4904,6 +4933,12 @@ final class AppStore: ObservableObject {
     func compactItemsWithinPages() {
         guard !items.isEmpty else { return }
         items = filteredItemsRemovingHidden(from: compactedItemsWithinPages(items))
+    }
+
+    /// 供外部在单次赋值给 items 前完成页内压缩的纯函数（不触碰状态），
+    /// 用于把「赋值 → 0.1s 后再压缩赋值」的两轮更新合并为一轮。
+    func precompactedItems(_ source: [LaunchpadItem]) -> [LaunchpadItem] {
+        filteredItemsRemovingHidden(from: compactedItemsWithinPages(source))
     }
 
     private func compactedItemsWithinPages(_ source: [LaunchpadItem]) -> [LaunchpadItem] {
@@ -5168,6 +5203,14 @@ final class AppStore: ObservableObject {
             let saved = try modelContext.fetch(descriptor)
             guard !saved.isEmpty else { return false }
 
+            // 路径 → AppInfo 索引：后续所有槽位/文件夹成员匹配走 O(1) 查找，
+            // 避免每条记录对 apps 做线性扫描（整体 O(rows × apps) → O(rows + apps)）
+            var appsByPath: [String: AppInfo] = [:]
+            appsByPath.reserveCapacity(apps.count)
+            for app in apps {
+                appsByPath[app.url.path] = app
+            }
+
             // 构建文件夹：按首次出现顺序
             var folderMap: [String: FolderInfo] = [:]
             var foldersInOrder: [FolderInfo] = []
@@ -5178,7 +5221,7 @@ final class AppStore: ObservableObject {
                 if folderMap[fid] != nil { continue }
 
                 let folderApps: [AppInfo] = row.appPaths.compactMap { path in
-                    if let existing = apps.first(where: { $0.url.path == path }) {
+                    if let existing = appsByPath[path] {
                         return existing
                     }
                     let url = URL(fileURLWithPath: path)
@@ -5211,7 +5254,7 @@ final class AppStore: ObservableObject {
                     }
                 case "app":
                     if let path = row.appPath, !folderAppPathSet.contains(path) {
-                        if let existing = apps.first(where: { $0.url.path == path }) {
+                        if let existing = appsByPath[path] {
                             clearMissingPlaceholder(for: path)
                             combined.append(.app(existing))
                         } else {
@@ -5229,7 +5272,7 @@ final class AppStore: ObservableObject {
                     }
                 case "missing":
                     if let path = row.appPath {
-                        if let existing = apps.first(where: { $0.url.path == path }) {
+                        if let existing = appsByPath[path] {
                             clearMissingPlaceholder(for: path)
                             combined.append(.app(existing))
                         } else {
@@ -5365,96 +5408,126 @@ final class AppStore: ObservableObject {
 
         print("LaunchNext: Saving order data for \(items.count) items...")
         
-        // 写入新模型：按页-槽位
+        // 写入新模型：按页-槽位（增量 upsert：按 slotId 复用既有行，只改字段；
+        // 相比全删全插，一次拖拽的主线程 SwiftData 开销显著降低）
         do {
             let existing = try modelContext.fetch(FetchDescriptor<PageEntryData>())
-            print("LaunchNext: Found \(existing.count) existing entries, clearing...")
-            for row in existing { modelContext.delete(row) }
+            var rowBySlot: [String: PageEntryData] = [:]
+            rowBySlot.reserveCapacity(existing.count)
+            for row in existing { rowBySlot[row.slotId] = row }
 
             // 构建 folders 查找表
             let folderById: [String: FolderInfo] = Dictionary(uniqueKeysWithValues: folders.map { ($0.id, $0) })
             let itemsPerPage = self.itemsPerPage // 使用计算属性
+            let now = Date()
 
             for (idx, item) in items.enumerated() {
                 let pageIndex = idx / itemsPerPage
                 let position = idx % itemsPerPage
                 let slotId = "page-\(pageIndex)-pos-\(position)"
+                // 取出该槽位的既有行；命中则原地更新并从待删表移除，未命中则新建
+                let existingRow = rowBySlot.removeValue(forKey: slotId)
+                let row = existingRow ?? PageEntryData(
+                    slotId: slotId, pageIndex: pageIndex, position: position, kind: "empty"
+                )
+                row.pageIndex = pageIndex
+                row.position = position
+                row.updatedAt = now
                 switch item {
                 case .folder(let folder):
                     let authoritativeFolder = folderById[folder.id] ?? folder
-                    let row = PageEntryData(
-                        slotId: slotId,
-                        pageIndex: pageIndex,
-                        position: position,
-                        kind: "folder",
-                        folderId: authoritativeFolder.id,
-                        folderName: authoritativeFolder.name,
-                        appPaths: authoritativeFolder.apps.map { $0.url.path },
-                        pinnedAppPaths: authoritativeFolder.pinnedAppPaths
-                    )
-                    modelContext.insert(row)
+                    row.kind = "folder"
+                    row.appPath = nil
+                    row.appDisplayName = nil
+                    row.removableSource = nil
+                    row.folderId = authoritativeFolder.id
+                    row.folderName = authoritativeFolder.name
+                    row.appPaths = authoritativeFolder.apps.map { $0.url.path }
+                    row.pinnedAppPaths = authoritativeFolder.pinnedAppPaths
                 case .app(let app):
-                    let row = PageEntryData(
-                        slotId: slotId,
-                        pageIndex: pageIndex,
-                        position: position,
-                        kind: "app",
-                        appPath: app.url.path,
-                        appDisplayName: app.name,
-                        removableSource: removableSourcePath(forAppPath: app.url.path)
-                    )
-                    modelContext.insert(row)
+                    row.kind = "app"
+                    row.folderId = nil
+                    row.folderName = nil
+                    row.appPaths = []
+                    row.pinnedAppPaths = []
+                    row.appPath = app.url.path
+                    row.appDisplayName = app.name
+                    row.removableSource = removableSourcePath(forAppPath: app.url.path)
                 case .missingApp(let placeholder):
-                    let row = PageEntryData(
-                        slotId: slotId,
-                        pageIndex: pageIndex,
-                        position: position,
-                        kind: "missing",
-                        appPath: placeholder.bundlePath,
-                        appDisplayName: placeholder.displayName,
-                        removableSource: placeholder.removableSource
-                    )
-                    modelContext.insert(row)
+                    row.kind = "missing"
+                    row.folderId = nil
+                    row.folderName = nil
+                    row.appPaths = []
+                    row.pinnedAppPaths = []
+                    row.appPath = placeholder.bundlePath
+                    row.appDisplayName = placeholder.displayName
+                    row.removableSource = placeholder.removableSource
                 case .empty:
-                    let row = PageEntryData(
-                        slotId: slotId,
-                        pageIndex: pageIndex,
-                        position: position,
-                        kind: "empty"
-                    )
+                    row.kind = "empty"
+                    row.appPath = nil
+                    row.appDisplayName = nil
+                    row.folderId = nil
+                    row.folderName = nil
+                    row.appPaths = []
+                    row.pinnedAppPaths = []
+                    row.removableSource = nil
+                }
+                if existingRow == nil {
                     modelContext.insert(row)
                 }
             }
+            // 槽位已不存在（页数减少等）的行删除
+            for (_, stale) in rowBySlot { modelContext.delete(stale) }
+            rowBySlot.removeAll()
+
             try modelContext.save()
-            print("LaunchNext: Successfully saved order data")
-            
-            // 清理旧版表，避免占用空间（忽略错误）
-            do {
-                let legacy = try modelContext.fetch(FetchDescriptor<TopItemData>())
-                for row in legacy { modelContext.delete(row) }
-                try? modelContext.save()
-            } catch { }
+            print("LaunchNext: Successfully saved order data (incremental)")
+
+            // 清理旧版表：仅本会话首次保存时执行一次，避免每次保存都全量 fetch+delete
+            if !didCleanLegacyTopItems {
+                didCleanLegacyTopItems = true
+                do {
+                    let legacy = try modelContext.fetch(FetchDescriptor<TopItemData>())
+                    for row in legacy { modelContext.delete(row) }
+                    try? modelContext.save()
+                } catch { }
+            }
+
+            // 本次显式保存已覆盖最新的 items 状态，抑制随后到期的防抖保存
+            skipNextDebouncedSave = true
+            revisionAtLastExplicitSave = itemsRevision
         } catch {
             print("LaunchNext: Error saving order data: \(error)")
         }
     }
 
     // 触发文件夹更新，通知所有相关视图刷新图标
-    private func triggerFolderUpdate() {
+    /// - Parameter clearsPreviewCache: 仅在图标/外观等会改变渲染结果时清空整个文件夹预览缓存。
+    ///   文件夹内容变化无需清空——预览缓存 key 已包含成员路径的内容 hash，会自然失效，
+    ///   全清只会让所有可见文件夹在下一帧主线程重渲 3x3 拼贴。
+    private func triggerFolderUpdate(clearsPreviewCache: Bool = true) {
         if !Thread.isMainThread {
             DispatchQueue.main.async { [weak self] in
-                self?.triggerFolderUpdate()
+                self?.triggerFolderUpdate(clearsPreviewCache: clearsPreviewCache)
             }
             return
         }
 
-        guard !folderUpdateScheduled else { return }
+        guard !folderUpdateScheduled else {
+            if clearsPreviewCache {
+                pendingFolderPreviewCacheClear = true
+            }
+            return
+        }
         folderUpdateScheduled = true
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.folderUpdateScheduled = false
             self.folderUpdateTrigger = UUID()
-            FolderPreviewCache.shared.clear()
+            if clearsPreviewCache || self.pendingFolderPreviewCacheClear {
+                self.pendingFolderPreviewCacheClear = false
+                FolderPreviewCache.shared.clear()
+            }
         }
     }
 
@@ -5532,7 +5605,7 @@ final class AppStore: ObservableObject {
         if openFolder?.id == normalizedFolder.id {
             openFolder = normalizedFolder
         }
-        triggerFolderUpdate()
+        triggerFolderUpdate(clearsPreviewCache: false)
         triggerGridRefresh()
         saveAllOrder()
     }

@@ -31,6 +31,12 @@ final class CAFolderGridView: NSView {
             updateLayout(animated: false)
         }
     }
+    var labelColorHex: String? {
+        didSet {
+            guard labelColorHex != oldValue else { return }
+            updateLabelColors()
+        }
+    }
     var labelFontWeight: NSFont.Weight = .medium {
         didSet {
             guard labelFontWeight != oldValue else { return }
@@ -123,6 +129,10 @@ final class CAFolderGridView: NSView {
     private var pendingDragUpdateAfterPageAnimation = false
     private var isPageScrollDragging = false
     private var isPageScrollAnimating = false
+    // 时间控制的收敛速率（1/秒），与 CAGridView 保持一致手感
+    private static let scrollConvergenceRate: Double = 23.8
+    private var animationDelta: CFTimeInterval = 1.0 / 60.0
+    private var lastAnimationFrameTime: CFTimeInterval = 0
     private var pageScrollStartOffset: CGFloat = 0
     private var pageScrollAccumulatedDelta: CGFloat = 0
     private var pageScrollSnapWorkItem: DispatchWorkItem?
@@ -213,14 +223,28 @@ final class CAFolderGridView: NSView {
     }
 
     private func setupDisplayLinkIfNeeded() {
-        guard displayLink == nil, let window else { return }
-        displayLink = window.displayLink(target: self, selector: #selector(displayLinkFired(_:)))
-        displayLink?.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
-        displayLink?.add(to: .main, forMode: .common)
+        if displayLink == nil, let window {
+            displayLink = window.displayLink(target: self, selector: #selector(displayLinkFired(_:)))
+            displayLink?.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+            displayLink?.add(to: .main, forMode: .common)
+        }
+        // 每次动画启动前确保 displayLink 处于运行状态
+        displayLink?.isPaused = false
     }
 
     @objc private func displayLinkFired(_ link: CADisplayLink) {
-        guard isPageScrollAnimating else { return }
+        guard isPageScrollAnimating else {
+            if !link.isPaused {
+                link.isPaused = true
+                lastAnimationFrameTime = 0
+            }
+            return
+        }
+        let now = CFAbsoluteTimeGetCurrent()
+        if lastAnimationFrameTime > 0 {
+            animationDelta = min(max(now - lastAnimationFrameTime, 1.0 / 240.0), 0.1)
+        }
+        lastAnimationFrameTime = now
         updatePageScrollAnimation()
     }
 
@@ -566,8 +590,7 @@ final class CAFolderGridView: NSView {
     }
 
     private func currentLabelColor() -> NSColor {
-        let match = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
-        return match == .darkAqua ? .white : .black
+        LaunchNextLabelColor(customHex: labelColorHex, appearance: effectiveAppearance)
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -914,7 +937,8 @@ final class CAFolderGridView: NSView {
         } else {
             let diff = targetHorizontalOffset - horizontalOffset
             if abs(diff) > 0.5 {
-                horizontalOffset += diff * 0.18
+                let factor: CGFloat = CGFloat(1.0 - exp(-Self.scrollConvergenceRate * animationDelta))
+                horizontalOffset += diff * min(factor, 1)
             } else {
                 horizontalOffset = targetHorizontalOffset
                 isPageScrollAnimating = false

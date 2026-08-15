@@ -4,6 +4,89 @@ import QuartzCore
 extension CAGridView {
     // MARK: - Layer Management
 
+    /// 槽位身份 key：相同 key 的槽位可复用既有 CALayer。
+    /// 包含显示名与文件夹成员路径，保证标签/内容变化时该槽位会被替换刷新。
+    private func itemIdentityKey(_ item: LaunchpadItem) -> String {
+        switch item {
+        case .app(let app):
+            return "a:\(app.url.path):\(app.name)"
+        case .folder(let folder):
+            return "f:\(folder.id):\(folder.name):\(folder.apps.map { $0.url.path }.joined(separator: "|"))"
+        case .missingApp(let placeholder):
+            return "m:\(placeholder.bundlePath):\(placeholder.displayName)"
+        case .empty:
+            // 所有空槽视觉上等价，统一身份以最大化复用
+            return "e"
+        }
+    }
+
+    /// items 更新的差量路径：按 (页, 槽位) 对比身份，未变化的槽位复用既有层，
+    /// 变化的槽位单独替换；页数变化或首建时回退全量重建。
+    /// 避免每次 items 赋值（拖拽、搜索过滤、刷新）都销毁并重建整棵 layer 树。
+    func reconcileLayers(previous: [LaunchpadItem]) {
+        let ipp = max(itemsPerPage, 1)
+        let previousPageCount = max(1, (previous.count + ipp - 1) / ipp)
+        guard !iconLayers.isEmpty, pageCount == previousPageCount else {
+            rebuildLayers()
+            return
+        }
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+
+        var reused = Set<ObjectIdentifier>()
+        var newPageLayers: [[CALayer]] = []
+        newPageLayers.reserveCapacity(pageCount)
+        var anyReplaced = false
+        var idx = 0
+
+        pageLoop: for pageIndex in 0..<pageCount {
+            var pageLayers: [CALayer] = []
+            pageLayers.reserveCapacity(ipp)
+            for slot in 0..<ipp {
+                guard idx < items.count else { break pageLoop }
+                let item = items[idx]
+                let oldIndex = pageIndex * ipp + slot
+                let oldLayer = (oldIndex < previous.count && pageIndex < iconLayers.count && slot < iconLayers[pageIndex].count)
+                    ? iconLayers[pageIndex][slot]
+                    : nil
+
+                if let oldLayer,
+                   oldIndex < previous.count,
+                   itemIdentityKey(item) == itemIdentityKey(previous[oldIndex]) {
+                    reused.insert(ObjectIdentifier(oldLayer))
+                    pageLayers.append(oldLayer)
+                } else {
+                    anyReplaced = true
+                    let layer = createIconLayer(for: item, localIndex: slot, pageIndex: pageIndex)
+                    pageContainerLayer.addSublayer(layer)
+                    pageLayers.append(layer)
+                }
+                idx += 1
+            }
+            newPageLayers.append(pageLayers)
+        }
+
+        if !anyReplaced && newPageLayers.count == iconLayers.count {
+            // 完全没有变化：保留原结构，不触发布局抖动
+            return
+        }
+
+        // 移除所有未被复用的旧层（含被替换的和结构缩水的）
+        for pageLayers in iconLayers {
+            for layer in pageLayers where !reused.contains(ObjectIdentifier(layer)) {
+                layer.removeFromSuperlayer()
+            }
+        }
+        iconLayers = newPageLayers
+
+        if bounds.width > 0 && bounds.height > 0 {
+            updateLayout()
+        }
+        navigateToPage(currentPage, animated: false)
+    }
+
     func rebuildLayers() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -83,10 +166,10 @@ extension CAGridView {
         let iconLayer = CALayer()
         iconLayer.name = "icon"
         iconLayer.contentsGravity = .resizeAspect
-        iconLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+        iconLayer.contentsScale = iconBackingScale
         iconLayer.masksToBounds = false
         iconLayer.shouldRasterize = true
-        iconLayer.rasterizationScale = NSScreen.main?.backingScaleFactor ?? 2.0
+        iconLayer.rasterizationScale = iconBackingScale
         iconLayer.drawsAsynchronously = true
         iconLayer.shadowOpacity = 0
 
@@ -95,7 +178,7 @@ extension CAGridView {
         // 文字标签层 - 匹配原 SwiftUI 样式
         let textLayer = CATextLayer()
         textLayer.name = "label"
-        textLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+        textLayer.contentsScale = iconBackingScale
         textLayer.fontSize = labelFontSize
         textLayer.font = NSFont.systemFont(ofSize: labelFontSize, weight: labelFontWeight)
         textLayer.isHidden = !showLabels
@@ -105,7 +188,7 @@ extension CAGridView {
 
         // 性能优化：栅格化文字层
         textLayer.shouldRasterize = true
-        textLayer.rasterizationScale = NSScreen.main?.backingScaleFactor ?? 2.0
+        textLayer.rasterizationScale = iconBackingScale
 
         // Match system label color for light/dark
         textLayer.foregroundColor = currentLabelColor().cgColor
@@ -135,7 +218,7 @@ extension CAGridView {
             checkboxLayer.cornerRadius = 8
             checkboxLayer.borderWidth = 1.25
             checkboxLayer.zPosition = 20
-            checkboxLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+            checkboxLayer.contentsScale = iconBackingScale
 
             let markLayer = CAShapeLayer()
             markLayer.name = "batchSelectionCheckboxMark"
@@ -143,7 +226,7 @@ extension CAGridView {
             markLayer.strokeColor = NSColor.white.cgColor
             markLayer.lineCap = .round
             markLayer.lineJoin = .round
-            markLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+            markLayer.contentsScale = iconBackingScale
             checkboxLayer.addSublayer(markLayer)
             containerLayer.addSublayer(checkboxLayer)
         }
@@ -203,19 +286,21 @@ extension CAGridView {
     func getCachedIcon(for path: String) -> CGImage? {
         iconCacheLock.lock()
         defer { iconCacheLock.unlock() }
-        return iconCache[path]
+        return iconCache[iconCacheKey(for: path)]
     }
 
     func loadIcon(for path: String, icon: NSImage) -> CGImage? {
+        let cacheKey = iconCacheKey(for: path)
         iconCacheLock.lock()
-        if let cached = iconCache[path] {
+        if let cached = iconCache[cacheKey] {
             iconCacheLock.unlock()
             return cached
         }
         iconCacheLock.unlock()
 
-        // 渲染为 CGImage
-        let size = NSSize(width: iconSize * 2, height: iconSize * 2) // Retina
+        // 渲染为 CGImage（按窗口真实后备缩放，避免固定 2x 在高分屏发糊、1x 屏浪费内存）
+        let scale = iconBackingScale
+        let size = NSSize(width: iconSize * scale, height: iconSize * scale)
         let image = NSImage(size: size)
         image.lockFocus()
         icon.draw(in: NSRect(origin: .zero, size: size))
@@ -226,7 +311,10 @@ extension CAGridView {
         }
 
         iconCacheLock.lock()
-        iconCache[path] = cgImage
+        if iconCache.count >= Self.iconCacheCountLimit {
+            iconCache.removeAll()
+        }
+        iconCache[cacheKey] = cgImage
         iconCacheLock.unlock()
 
         return cgImage

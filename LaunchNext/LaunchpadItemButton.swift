@@ -187,7 +187,9 @@ private struct LaunchpadItemButtonContent: View {
                     .multilineTextAlignment(.center)
                     .truncationMode(.tail)
                     .frame(width: labelWidth)
-                    .foregroundStyle(isMissingItem ? Color.secondary : Color.primary)
+                    .foregroundStyle(isMissingItem
+                        ? Color.secondary
+                        : (AppStore.customIconLabelNSColor.map { Color(nsColor: $0) } ?? Color.primary))
             }
         }
         .padding(8)
