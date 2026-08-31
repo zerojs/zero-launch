@@ -25,6 +25,29 @@ enum LNAnimations {
             return AnyTransition.opacity
         }
     }
+
+    /// 从指定锚点(通常是文件夹图标的位置)缩放展开/收起的过渡,
+    /// 模拟 LaunchOS 的文件夹打开动画。
+    static func folderOpenAnchorTransition(anchor: UnitPoint) -> AnyTransition {
+        guard AnimationPreferences.isEnabled else { return AnyTransition.opacity }
+        return AnyTransition.modifier(
+            active: FolderAnchorScaleModifier(anchor: anchor, isActive: true),
+            identity: FolderAnchorScaleModifier(anchor: anchor, isActive: false)
+        )
+    }
+}
+
+/// 锚点缩放 + 透明度过渡修饰器:active 状态对应收起(小、透明),
+/// identity 对应展开完成。
+private struct FolderAnchorScaleModifier: ViewModifier {
+    let anchor: UnitPoint
+    let isActive: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(isActive ? 0.35 : 1, anchor: anchor)
+            .opacity(isActive ? 0 : 1)
+    }
 }
 
 private enum AnimationPreferences {

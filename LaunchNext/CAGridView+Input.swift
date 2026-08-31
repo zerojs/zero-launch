@@ -258,7 +258,14 @@ extension CAGridView {
 
         if let (item, index) = itemAt(location) {
             // print("🖱️ [CAGrid] Hit item: \(item.name) at index \(index)")
-            if event.clickCount == 1 {
+            if case .empty = item {
+                // 空白占位格子:视觉上是空白区域,与图标间隙一样
+                // 走空白点击分支(点击关闭、拖拽翻页),而不是当作 item 处理
+                isPageDragging = true
+                pageDragStartX = location.x
+                pageDragStartOffset = scrollOffset
+                dragStartPoint = location
+            } else if event.clickCount == 1 {
                 // 添加点击效果动画
                 setPressedIndex(index)
                 dragStartPoint = location

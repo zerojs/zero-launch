@@ -83,6 +83,11 @@
 
 > 注:文字**大小**(9-16pt,支持全屏/紧凑双模式独立作用域)与**字重**为上游已有功能,位于同一设置区。
 
+### 文件夹展开体验(LaunchOS 风格)
+- **锚点展开动画**(`Animations.swift`、`CAGridViewRepresentable.swift`、`LaunchpadView.swift`):点击文件夹图标时,面板从**图标所在位置**缩放展开(0.35 → 1 + 淡入,spring 驱动),关闭时缩回图标处;键盘打开时以中心点为锚点。实现:`onOpenFolder` 回调带出图标中心(窗口坐标),换算为文件夹视图内的归一化 `UnitPoint`,经自定义 `AnyTransition.modifier` 应用。
+- **文件夹名称移到展开框之外**(`FolderView.swift`):标题从玻璃面板内部顶部移到面板上方,网格不再为标题预留空间(`verticalHeaderHeight: 0`),纵向滚动模式下的标题随内容滚动/淡出逻辑一并移除。
+- **单击标题重命名**(`FolderView.swift`):原为双击进入编辑,现单击标题即可改名(回车或点击框内提交)。
+
 ---
 
 ## 四、本次会话配套的数据迁移工具(未纳入仓库)

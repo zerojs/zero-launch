@@ -13,7 +13,7 @@ struct CAGridViewRepresentable: NSViewRepresentable {
     var contentInsets: NSEdgeInsets
     var pageSpacing: CGFloat
     var onOpenApp: ((AppInfo) -> Void)?
-    var onOpenFolder: ((FolderInfo) -> Void)?
+    var onOpenFolder: ((FolderInfo, CGPoint?) -> Void)?
     var externalDragSourceIndex: Int?
     var externalDragHoverIndex: Int?
     var selectedIndex: Int?
@@ -79,7 +79,12 @@ struct CAGridViewRepresentable: NSViewRepresentable {
             case .app(let app):
                 launchApp(app)
             case .folder(let folder):
-                onOpenFolder?(folder)
+                // 带出图标中心点(窗口坐标),供文件夹展开动画作为缩放锚点
+                var centerInWindow: CGPoint?
+                if let center = view.iconCenter(for: index) {
+                    centerInWindow = view.convert(center, to: nil)
+                }
+                onOpenFolder?(folder, centerInWindow)
             case .missingApp:
                 // 丢失的应用，不处理
                 break

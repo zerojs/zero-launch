@@ -121,6 +121,8 @@ struct LaunchpadView: View {
     @State private var pendingDropIndex: Int? = nil
     @StateObject private var pageFlipManager = PageFlipManager()
     @State private var folderHoverCandidateIndex: Int? = nil
+    // 打开文件夹时被点击图标的位置(窗口坐标),nil 表示键盘打开(用中心点做锚点)
+    @State private var folderOpenIconPoint: CGPoint? = nil
     @State private var folderHoverBeganAt: Date? = nil
     @State private var selectedIndex: Int? = nil
     @State private var isKeyboardNavigationActive: Bool = false
@@ -130,6 +132,7 @@ struct LaunchpadView: View {
     @State private var globalMouseUpMonitor: Any? = nil
     @State private var gridOriginInWindow: CGPoint = .zero
     @State private var currentContainerSize: CGSize = .zero
+    @State private var overlayWindowSize: CGSize = .zero
     @State private var currentColumnWidth: CGFloat = 0
     @State private var currentAppHeight: CGFloat = 0
     @State private var currentIconSize: CGFloat = 0
@@ -205,6 +208,27 @@ struct LaunchpadView: View {
         searchEngine.filter(items: appStore.items,
                             query: appStore.searchQuery,
                             fuzzyEnabled: appStore.fuzzySearchEnabled)
+    }
+
+    /// 页面指示器高亮颜色:与图标标签字色保持一致
+    /// (自定义 #RRGGBB;未自定义时深色模式白色/浅色模式黑色)
+    private var pageIndicatorAccentColor: Color {
+        if let ns = LaunchNextParseHexColor(appStore.iconLabelColorHex.isEmpty ? nil : appStore.iconLabelColorHex) {
+            return Color(nsColor: ns)
+        }
+        return colorScheme == .dark ? .white : .black
+    }
+
+    /// 文件夹展开动画锚点:被点击图标在全窗口内的归一化位置。
+    /// folderOpenIconPoint 为窗口坐标(AppKit 左下原点,y 向上),
+    /// SwiftUI GeometryReader 以左上为原点,需翻转;nil 表示键盘
+    /// 打开,使用中心点展开。
+    private var folderOpenAnchorInOverlay: UnitPoint {
+        guard let p = folderOpenIconPoint,
+              overlayWindowSize.width > 0, overlayWindowSize.height > 0 else { return .center }
+        let ux = p.x / overlayWindowSize.width
+        let uy = (overlayWindowSize.height - p.y) / overlayWindowSize.height
+        return UnitPoint(x: min(max(ux, -0.3), 1.3), y: min(max(uy, -0.3), 1.3))
     }
     
     var pages: [[LaunchpadItem]] {
@@ -471,6 +495,15 @@ struct LaunchpadView: View {
         }
         .ignoresSafeArea()
         .overlay(launchpadInteractionOverlay)
+        .background(
+            // 捕获全窗口尺寸,供文件夹展开动画计算锚点
+            GeometryReader { g in
+                Color.clear
+                    .onAppear { overlayWindowSize = g.size }
+                    .onChange(of: g.size) { _, s in overlayWindowSize = s }
+            }
+            .ignoresSafeArea()
+        )
     }
 
     private var launchpadStyledContent: some View {
@@ -532,15 +565,18 @@ struct LaunchpadView: View {
             ZStack {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
+                        .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(.secondary)
                     TextField(appStore.localized(.searchPlaceholder), text: $appStore.searchText)
                         .textFieldStyle(.plain)
+                        .font(.system(size: 15))
                 }
-                .padding(.vertical, 8)
-                .padding(.horizontal, 12)
-                .liquidGlass(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 44)
+                .liquidGlass(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
                         .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
                 )
                 .frame(maxWidth: 480)
@@ -570,7 +606,7 @@ struct LaunchpadView: View {
                         } label: {
                             Image(systemName: "arrow.clockwise.circle")
                                 .font(.title)
-                                .foregroundStyle(.placeholder.opacity(0.5))
+                                .foregroundStyle(pageIndicatorAccentColor.opacity(0.6))
                         }
                         .buttonStyle(.plain)
                         .help(appStore.localized(.refresh))
@@ -580,7 +616,7 @@ struct LaunchpadView: View {
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .font(.title)
-                            .foregroundStyle(.placeholder.opacity(0.5))
+                            .foregroundStyle(pageIndicatorAccentColor.opacity(0.6))
                     }
                     .buttonStyle(.plain)
                 }
@@ -632,13 +668,17 @@ struct LaunchpadView: View {
             if !appStore.shouldShowOnboarding && pages.count > 1 {
                 HStack(spacing: 8) {
                     ForEach(0..<pages.count, id: \.self) { index in
+                        let isSelected = appStore.currentPage == index
                         Circle()
-                            .fill(appStore.currentPage == index ? Color.gray : Color.gray.opacity(0.3))
+                            .fill(pageIndicatorAccentColor)
+                            .opacity(isSelected ? 1 : 0.35)
                             .frame(width: 8, height: 8)
+                            .scaleEffect(isSelected ? 1.25 : 1)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 navigateToPage(index)
                             }
+                            .animation(.easeOut(duration: 0.15), value: appStore.currentPage)
                     }
                 }
                 .padding(.top, CGFloat(indicatorTopPadding))
@@ -765,8 +805,8 @@ struct LaunchpadView: View {
                     .frame(width: clampedWidth, height: clampedHeight)
                     .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
                     .id("folder_\(folderId)") // 使用稳定ID，避免每次更新导致视图重建
-                    .transition(LNAnimations.folderOpenTransition)
                 }
+                .transition(LNAnimations.folderOpenAnchorTransition(anchor: folderOpenAnchorInOverlay))
             }
 
             // The header passes events through; clicking the outer window margins dismisses LaunchNext.
@@ -819,7 +859,7 @@ struct LaunchpadView: View {
             }
         }
     }
-    
+
     private func playPostOnboardingGridReveal() {
         pendingPostOnboardingReveal = false
         postOnboardingGridOpacity = 0
@@ -912,8 +952,9 @@ struct LaunchpadView: View {
                         contentInsets: caInsets,
                         pageSpacing: config.pageSpacing,
                         onOpenApp: nil,
-                        onOpenFolder: { folder in
+                        onOpenFolder: { folder, iconCenterInWindow in
                             withAnimation(LNAnimations.springFast) {
+                                folderOpenIconPoint = iconCenterInWindow
                                 appStore.openFolder = folder
                             }
                         },
@@ -1093,6 +1134,8 @@ struct LaunchpadView: View {
             launchApp(app)
         case .folder(let folder):
             withAnimation(LNAnimations.springFast) {
+                // 键盘/SwiftUI 渲染路径打开:无图标坐标,锚点用中心
+                folderOpenIconPoint = nil
                 appStore.openFolder = folder
             }
         case .missingApp:

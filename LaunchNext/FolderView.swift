@@ -5,6 +5,7 @@ import Combine
 struct FolderView: View {
     @ObservedObject var appStore: AppStore
     @Binding var folder: FolderInfo
+    @Environment(\.colorScheme) private var colorScheme
     // 若提供，将强制使用与外层一致的图标尺寸
     var preferredIconSize: CGFloat? = nil
     @State private var folderName: String = ""
@@ -57,16 +58,21 @@ struct FolderView: View {
     }
     
     var body: some View {
-        folderContent
-        .padding()
-        .liquidGlass(in: RoundedRectangle(cornerRadius: 30))
-        .clipShape(RoundedRectangle(cornerRadius: 30))
-        .transition(LNAnimations.folderOpenTransition)
-        .onTapGesture {
-            // 当点击文件夹视图的非编辑区域时，如果正在编辑名称，则退出编辑模式
-            if isEditingName {
-                finishEditing()
-            }
+        VStack(spacing: 10) {
+            // 文件夹名称位于展开框之外(上方),单击即可进入重命名
+            folderTitleSection
+                .frame(height: folderTitleHeight)
+
+            folderContent
+                .padding()
+                .liquidGlass(in: RoundedRectangle(cornerRadius: 30))
+                .clipShape(RoundedRectangle(cornerRadius: 30))
+                .onTapGesture {
+                    // 点击框内非编辑区域时,若正在编辑名称则退出编辑模式
+                    if isEditingName {
+                        finishEditing()
+                    }
+                }
         }
         .onAppear {
             resetFolderPagingState()
@@ -142,30 +148,14 @@ struct FolderView: View {
 
     @ViewBuilder
     private var folderContent: some View {
-        if shouldScrollFolderTitleWithContent {
+        // 标题已移至框外,folderContent 仅承载应用网格与页码指示
+        VStack(spacing: 0) {
             GeometryReader { geo in
-                ZStack(alignment: .top) {
-                    appGridSection(geometry: geo)
-
-                    folderTitleSection
-                        .frame(height: folderTitleHeight)
-                        .offset(y: -min(folderVerticalScrollOffset, folderTitleHeight))
-                        .opacity(folderTitleOpacity)
-                        .allowsHitTesting(folderVerticalScrollOffset < folderTitleHeight || isEditingName)
-                }
+                appGridSection(geometry: geo)
             }
-        } else {
-            VStack(spacing: 0) {
-                folderTitleSection
-                    .frame(height: folderTitleHeight)
 
-                GeometryReader { geo in
-                    appGridSection(geometry: geo)
-                }
-
-                if shouldShowFolderPageIndicator {
-                    folderPageIndicator
-                }
+            if shouldShowFolderPageIndicator {
+                folderPageIndicator
             }
         }
     }
@@ -180,7 +170,7 @@ struct FolderView: View {
                         .textFieldStyle(.plain)
                         .multilineTextAlignment(.center)
                         .font(.title)
-                        .foregroundColor(.primary)
+                        .foregroundColor(AppStore.customIconLabelNSColor.map { Color(nsColor: $0) } ?? Color.primary)
                         .focused($isTextFieldFocused)
                         .padding()
                         .onSubmit {
@@ -201,14 +191,12 @@ struct FolderView: View {
                 } else {
                     Text(folder.name)
                         .font(.title)
-                        .foregroundColor(.primary)
-                        .padding()
+                        .foregroundColor(AppStore.customIconLabelNSColor.map { Color(nsColor: $0) } ?? Color.primary)
+                        .padding(.vertical, 6)
                         .contentShape(Rectangle()) // 确保整个区域都可以点击
-                        .onTapGesture(count: 2) {
-                            startEditing()
-                        }
                         .onTapGesture {
-                            // 单击时不做任何操作，避免意外触发
+                            // 单击标题直接进入重命名
+                            startEditing()
                         }
                         .id(forceRefreshTrigger) // 使用forceRefreshTrigger强制刷新
                 }
@@ -222,16 +210,12 @@ struct FolderView: View {
         appStore.useCAGridRenderer && appStore.folderLayoutMode == .paged && folderPageCount > 1
     }
 
-    private var shouldScrollFolderTitleWithContent: Bool {
-        appStore.useCAGridRenderer && appStore.folderLayoutMode == .vertical
-    }
-
-    private var folderTitleOpacity: Double {
-        if isEditingName { return 1 }
-        let fadeStart = folderTitleHeight * 0.45
-        let fadeRange = max(folderTitleHeight * 0.55, 1)
-        let progress = min(max((folderVerticalScrollOffset - fadeStart) / fadeRange, 0), 1)
-        return Double(1 - progress)
+    /// 与主页面 pageIndicatorAccentColor 一致:跟随图标标签字色
+    private var folderIndicatorAccentColor: Color {
+        if let ns = LaunchNextParseHexColor(appStore.iconLabelColorHex.isEmpty ? nil : appStore.iconLabelColorHex) {
+            return Color(nsColor: ns)
+        }
+        return colorScheme == .dark ? .white : .black
     }
 
     private var safeFolderCurrentPage: Int {
@@ -241,13 +225,17 @@ struct FolderView: View {
     private var folderPageIndicator: some View {
         HStack(spacing: 8) {
             ForEach(0..<folderPageCount, id: \.self) { index in
+                let isSelected = safeFolderCurrentPage == index
                 Circle()
-                    .fill(safeFolderCurrentPage == index ? Color.gray : Color.gray.opacity(0.3))
+                    .fill(folderIndicatorAccentColor)
+                    .opacity(isSelected ? 1 : 0.35)
                     .frame(width: 8, height: 8)
+                    .scaleEffect(isSelected ? 1.25 : 1)
                     .contentShape(Rectangle())
                     .onTapGesture {
                         folderCurrentPage = index
                     }
+                    .animation(.easeOut(duration: 0.15), value: safeFolderCurrentPage)
             }
         }
         .padding(.top, 2)
@@ -285,7 +273,7 @@ struct FolderView: View {
                 pageCount: $folderPageCount,
                 verticalScrollOffset: $folderVerticalScrollOffset,
                 iconSize: iconSize,
-                verticalHeaderHeight: shouldScrollFolderTitleWithContent ? folderTitleHeight : 0,
+                verticalHeaderHeight: 0, // 标题已移至框外,网格无需预留头部空间
                 onClose: onClose,
                 onLaunchApp: onLaunchApp
             )
