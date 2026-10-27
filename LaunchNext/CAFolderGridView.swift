@@ -85,6 +85,11 @@ final class CAFolderGridView: NSView {
     var onPageStateChanged: ((Int, Int) -> Void)?
     var onVerticalScrollOffsetChanged: ((CGFloat) -> Void)?
 
+    // 外部接力拖入(主网格 dwell 自动展开文件夹后继续拖拽):
+    // 松手在网格范围内时回调 (app, 插入位置);松手在范围外时回调取消(应用留在主网格原位)。
+    var onDropExternalApp: ((AppInfo, Int) -> Void)?
+    var onExternalDragCancelled: (() -> Void)?
+
     private let baseContentInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
     private var contentInsets: NSEdgeInsets {
         var insets = baseContentInsets
@@ -144,6 +149,10 @@ final class CAFolderGridView: NSView {
     private var lastReportedPage: Int?
     private var lastReportedPageCount: Int?
     private var lastReportedVerticalOffset: CGFloat?
+
+    // 外部接力拖入状态(主网格 dwell 自动展开后带入)
+    private var isExternalDragging = false
+    private var externalDragMonitor: Any?
 
     var displayedPage: Int { currentPage }
     var displayedPageCount: Int { pageCount }
@@ -209,6 +218,10 @@ final class CAFolderGridView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        // 视图随窗口卸载(如拖拽中途关闭文件夹):清理外部接力拖拽,避免监视器泄漏
+        if window == nil, isExternalDragging {
+            cleanupExternalDrag()
+        }
         window?.acceptsMouseMovedEvents = true
         if window != nil {
             setupDisplayLinkIfNeeded()
@@ -1036,6 +1049,10 @@ final class CAFolderGridView: NSView {
         let container = CALayer()
         container.frame = CGRect(x: point.x - iconSize / 2, y: point.y - iconSize / 2, width: iconSize, height: iconSize)
         container.transform = CATransform3DMakeScale(1.08, 1.08, 1)
+        // 与主网格拖拽层一致:显式抬高 z 序,确保拖拽中的 app 始终绘制在
+        // 文件夹内容层(contentLayer)之上。仅靠 addSublayer 的插入顺序在
+        // 展开过渡/宿主合成等场景下不可靠,会出现文件夹图标盖住拖拽 app 的问题。
+        container.zPosition = 1000
         container.shadowColor = NSColor.black.cgColor
         container.shadowOpacity = 0.18
         container.shadowRadius = 10
@@ -1053,6 +1070,10 @@ final class CAFolderGridView: NSView {
     }
 
     private func updateDragging(at point: CGPoint) {
+        if isExternalDragging {
+            updateExternalDragging(at: point)
+            return
+        }
         dragCurrentPoint = point
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -1090,6 +1111,132 @@ final class CAFolderGridView: NSView {
 
         let hoverIndex = gridIndex(at: point)
         updateReorderPreview(targetIndex: hoverIndex == draggingIndex ? nil : hoverIndex)
+    }
+
+    // MARK: - 外部接力拖入(主网格 dwell 自动展开文件夹后带入)
+
+    /// 开始外部接力拖拽:鼠标左键在 dwell 触发时仍处于按下状态,
+    /// 通过本地事件监视器接管后续 leftMouseDragged/leftMouseUp
+    /// (原始 mouseDown 发生在主网格,事件序列不会路由到本视图)。
+    func beginExternalDrag(app: AppInfo, screenPoint: CGPoint) {
+        guard !isExternalDragging else { return }
+        // 展开动画期间已松手:放弃接力,文件夹保持打开,应用留在主网格原位
+        guard NSEvent.pressedMouseButtons & 1 == 1 else { return }
+        guard let window else {
+            // 视图尚未挂到窗口(展开过渡中),下一轮主循环重试
+            DispatchQueue.main.async { [weak self] in
+                self?.beginExternalDrag(app: app, screenPoint: screenPoint)
+            }
+            return
+        }
+
+        makeFirstResponderIfNeeded()
+        let windowPoint = window.convertPoint(fromScreen: screenPoint)
+        let point = convert(windowPoint, from: nil)
+
+        isDraggingItem = true
+        isExternalDragging = true
+        draggingIndex = nil
+        draggingApp = app
+        currentHoverIndex = nil
+        pressedIndex = nil
+        draggingLayer = makeDraggingLayer(for: app, at: point)
+        if let draggingLayer { layer?.addSublayer(draggingLayer) }
+
+        if let externalDragMonitor { NSEvent.removeMonitor(externalDragMonitor) }
+        externalDragMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] event in
+            guard let self else { return event }
+            switch event.type {
+            case .leftMouseDragged:
+                let local = self.convert(event.locationInWindow, from: nil)
+                self.updateDragging(at: local)
+                return nil
+            case .leftMouseUp:
+                let local = self.convert(event.locationInWindow, from: nil)
+                self.finishExternalDrag(at: local)
+                return nil
+            default:
+                return event
+            }
+        }
+
+        updateDragging(at: point)
+    }
+
+    private func makeFirstResponderIfNeeded() {
+        if window?.firstResponder !== self {
+            window?.makeFirstResponder(self)
+        }
+    }
+
+    /// 外部拖拽的移动更新:与内部拖拽共用边缘翻页与重排预览,
+    /// 但不做 dragOut 主动取消(松手在范围外才取消)。
+    private func updateExternalDragging(at point: CGPoint) {
+        dragCurrentPoint = point
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        draggingLayer?.frame = CGRect(x: point.x - iconSize / 2, y: point.y - iconSize / 2, width: iconSize, height: iconSize)
+        CATransaction.commit()
+
+        if layoutMode == .paged {
+            let edgeDirection: Int?
+            if point.x < pageFlipEdgeWidth {
+                edgeDirection = -1
+            } else if point.x > bounds.width - pageFlipEdgeWidth {
+                edgeDirection = 1
+            } else {
+                edgeDirection = nil
+            }
+
+            if let edgeDirection {
+                if !edgeDragRequiresReentry {
+                    startEdgeFlipTimer(direction: edgeDirection)
+                }
+            } else {
+                edgeDragRequiresReentry = false
+                cancelEdgeFlipTimer()
+            }
+            guard !isPageScrollAnimating else { return }
+        }
+
+        let hoverIndex = gridIndex(at: point)
+        updateReorderPreview(targetIndex: hoverIndex)
+    }
+
+    private func finishExternalDrag(at point: CGPoint) {
+        guard isExternalDragging else { return }
+        finishPageAnimationImmediatelyIfNeeded()
+        let target = currentHoverIndex ?? gridIndex(at: point)
+        let app = draggingApp
+        let insideBounds = bounds.insetBy(dx: -8, dy: -8).contains(point)
+        cleanupExternalDrag()
+
+        guard let app, insideBounds, let target else {
+            // 松手在文件夹网格范围外:取消,应用留在主网格原位,关闭文件夹
+            onExternalDragCancelled?()
+            return
+        }
+        let clamped = min(max(0, target), apps.count)
+        onDropExternalApp?(app, clamped)
+    }
+
+    private func cleanupExternalDrag() {
+        if let externalDragMonitor {
+            NSEvent.removeMonitor(externalDragMonitor)
+        }
+        externalDragMonitor = nil
+        cancelEdgeFlipTimer()
+        edgeDragRequiresReentry = false
+        pendingDragUpdateAfterPageAnimation = false
+        resetReorderPreview(animated: true)
+        draggingLayer?.removeFromSuperlayer()
+        draggingLayer = nil
+        draggingIndex = nil
+        draggingApp = nil
+        isDraggingItem = false
+        isExternalDragging = false
+        currentHoverIndex = nil
+        pressedIndex = nil
     }
 
     private func startEdgeFlipTimer(direction: Int) {
@@ -1191,17 +1338,48 @@ final class CAFolderGridView: NSView {
     }
 
     private func updateReorderPreview(targetIndex: Int?) {
-        guard let source = draggingIndex, apps.indices.contains(source) else { return }
         let clampedTarget = targetIndex.map { min(max(0, $0), apps.count) }
         guard currentHoverIndex != clampedTarget else { return }
         currentHoverIndex = clampedTarget
 
         let metrics = makeMetrics()
-        if layoutMode == .paged {
-            updatePagedReorderPreview(source: source, target: clampedTarget, metrics: metrics)
-        } else {
-            updateVerticalReorderPreview(source: source, target: clampedTarget, metrics: metrics)
+        if isExternalDragging {
+            updateExternalReorderPreview(target: clampedTarget, metrics: metrics)
+        } else if let source = draggingIndex, apps.indices.contains(source) {
+            if layoutMode == .paged {
+                updatePagedReorderPreview(source: source, target: clampedTarget, metrics: metrics)
+            } else {
+                updateVerticalReorderPreview(source: source, target: clampedTarget, metrics: metrics)
+            }
         }
+    }
+
+    /// 外部拖入的重排预览:在目标位置打开插入缺口,现有图标依次后移一位。
+    /// 分页模式复用 updatePagedReorderPreview(source: apps.count) 的
+    /// "source 不在当前页 → 后方让位" 分支;纵向模式单独计算。
+    private func updateExternalReorderPreview(target: Int?, metrics: Metrics) {
+        if layoutMode == .paged {
+            updatePagedReorderPreview(source: apps.count, target: target, metrics: metrics)
+            return
+        }
+        guard !appLayers.isEmpty else { return }
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(animationsEnabled ? 0.28 : 0)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.25, 1.0, 0.35, 1.0))
+        for index in apps.indices {
+            guard appLayers.indices.contains(index) else { continue }
+            let layer = appLayers[index]
+            let visualIndex = (target != nil && index >= target!) ? index + 1 : index
+            let frame = frameForGridSlot(at: visualIndex, metrics: metrics)
+            layer.transform = CATransform3DIdentity
+            layer.frame = frame
+            if itemFrames.indices.contains(index) {
+                itemFrames[index] = visibleFrame(frame)
+            }
+            layoutSublayers(of: layer, metrics: metrics)
+            layer.opacity = 1
+        }
+        CATransaction.commit()
     }
 
     private func updatePagedReorderPreview(source: Int, target: Int?, metrics: Metrics) {

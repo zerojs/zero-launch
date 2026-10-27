@@ -29,6 +29,18 @@ struct CAFolderGridViewRepresentable: NSViewRepresentable {
         if appStore.folderLayoutMode == .paged, nsView.displayedPage != currentPage {
             nsView.setDisplayedPage(currentPage, animated: appStore.enableAnimations)
         }
+
+        // 消费"主网格 dwell 自动展开"带来的接力拖拽状态(仅本文件夹匹配时)
+        if let incomingApp = appStore.incomingFolderDragApp,
+           appStore.incomingFolderDragFolderID == folder.id {
+            let screenPoint = appStore.incomingFolderDragScreenLocation ?? NSEvent.mouseLocation
+            DispatchQueue.main.async {
+                appStore.incomingFolderDragApp = nil
+                appStore.incomingFolderDragFolderID = nil
+                appStore.incomingFolderDragScreenLocation = nil
+                nsView.beginExternalDrag(app: incomingApp, screenPoint: screenPoint)
+            }
+        }
     }
 
     private func configure(_ view: CAFolderGridView) {
@@ -107,6 +119,20 @@ struct CAFolderGridViewRepresentable: NSViewRepresentable {
                 appStore.removeAppFromFolder(app, folder: folder)
                 withAnimation(LNAnimations.springFast) {
                     onClose()
+                }
+            }
+        }
+        // 外部接力拖入:松手在文件夹网格内 → 移入文件夹并插入到目标位置
+        view.onDropExternalApp = { app, targetIndex in
+            DispatchQueue.main.async {
+                appStore.addAppToFolder(app, folder: folder, at: targetIndex)
+            }
+        }
+        // 外部接力拖入:松手在网格外 → 取消,应用留在主网格原位,关闭文件夹
+        view.onExternalDragCancelled = {
+            DispatchQueue.main.async {
+                withAnimation(LNAnimations.springFast) {
+                    appStore.openFolder = nil
                 }
             }
         }

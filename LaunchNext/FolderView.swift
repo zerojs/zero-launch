@@ -66,7 +66,10 @@ struct FolderView: View {
             folderContent
                 .padding()
                 .liquidGlass(in: RoundedRectangle(cornerRadius: 30))
-                .clipShape(RoundedRectangle(cornerRadius: 30))
+                // 不要在此处加 clipShape:接力拖拽的预览层(CALayer,zPosition=1000)
+                // 需要溢出文件夹面板以跟随光标,圆角裁切会把拖出面板范围的 app
+                // 切掉(表现为"被展开的文件夹挡住")。玻璃圆角已由 liquidGlass(in:)
+                // 提供,网格图标有 padding + contentInsets 内缩,不依赖额外裁切。
                 .onTapGesture {
                     // 点击框内非编辑区域时,若正在编辑名称则退出编辑模式
                     if isEditingName {

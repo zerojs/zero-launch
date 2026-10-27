@@ -139,6 +139,17 @@ struct CAGridViewRepresentable: NSViewRepresentable {
             }
         }
 
+        // 拖拽悬停文件夹 2 秒自动展开:记录被拖拽的应用与落点屏幕坐标,
+        // 由文件夹视图出现后消费,接力继续拖拽(松手在文件夹内则插入到对应位置)。
+        view.onDwellOpenFolder = { app, folder, centerInWindow in
+            DispatchQueue.main.async {
+                appStore.incomingFolderDragApp = app
+                appStore.incomingFolderDragFolderID = folder.id
+                appStore.incomingFolderDragScreenLocation = NSEvent.mouseLocation
+                onOpenFolder?(folder, centerInWindow)
+            }
+        }
+
         // Drag reorder
         view.onReorderItems = { fromIndex, toIndex in
             DispatchQueue.main.async {

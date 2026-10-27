@@ -2258,6 +2258,12 @@ final class AppStore: ObservableObject {
     @Published var folderRenameRequestID: String? = nil
     @Published var handoffDraggingApp: AppInfo? = nil
     @Published var handoffDragScreenLocation: CGPoint? = nil
+
+    // 主网格拖拽悬停自动展开文件夹后的"拖入文件夹"接力状态:
+    // dwell 触发时由主网格写入,文件夹网格视图出现后消费并接管后续拖拽事件。
+    @Published var incomingFolderDragApp: AppInfo? = nil
+    var incomingFolderDragFolderID: String? = nil
+    var incomingFolderDragScreenLocation: CGPoint? = nil
     
     // 触发器
     @Published var folderUpdateTrigger: UUID = UUID()
@@ -4460,12 +4466,19 @@ final class AppStore: ObservableObject {
     }
     
     func addAppToFolder(_ app: AppInfo, folder: FolderInfo) {
+        addAppToFolder(app, folder: folder, at: nil)
+    }
+
+    /// 将应用移入文件夹;`index` 非空时插入到指定位置(dwell 自动展开后拖入的场景),否则追加到末尾。
+    func addAppToFolder(_ app: AppInfo, folder: FolderInfo, at index: Int?) {
         guard let folderIndex = folders.firstIndex(of: folder) else { return }
-        
-        
+
+
         // 创建新的FolderInfo实例，确保SwiftUI能够检测到变化
         var updatedFolder = folders[folderIndex]
-        updatedFolder.apps.append(app)
+        updatedFolder.apps.removeAll { $0.url.path == app.url.path }
+        let insertIndex = min(max(0, index ?? updatedFolder.apps.count), updatedFolder.apps.count)
+        updatedFolder.apps.insert(app, at: insertIndex)
         folders[folderIndex] = updatedFolder
         
         

@@ -133,6 +133,7 @@ struct LaunchpadView: View {
     @State private var gridOriginInWindow: CGPoint = .zero
     @State private var currentContainerSize: CGSize = .zero
     @State private var overlayWindowSize: CGSize = .zero
+    @State private var isSettingsButtonHovering: Bool = false
     @State private var currentColumnWidth: CGFloat = 0
     @State private var currentAppHeight: CGFloat = 0
     @State private var currentIconSize: CGFloat = 0
@@ -615,10 +616,21 @@ struct LaunchpadView: View {
                         appStore.isSetting = true
                     } label: {
                         Image(systemName: "ellipsis.circle")
-                            .font(.title)
-                            .foregroundStyle(pageIndicatorAccentColor.opacity(0.6))
+                            .font(.system(size: 32))
+                            .foregroundStyle(pageIndicatorAccentColor.opacity(isSettingsButtonHovering ? 1.0 : 0.6))
+                            .scaleEffect(isSettingsButtonHovering ? 1.12 : 1.0)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(Color.primary.opacity(isSettingsButtonHovering ? 0.08 : 0))
+                                    .padding(-6)
+                            )
                     }
                     .buttonStyle(.plain)
+                    .onHover { hovering in
+                        withAnimation(.easeOut(duration: 0.12)) {
+                            isSettingsButtonHovering = hovering
+                        }
+                    }
                 }
             }
             .padding(.top)
@@ -2465,7 +2477,7 @@ extension LaunchpadView {
                     labelFontSize: CGFloat(appStore.iconLabelFontSize),
                     labelFontWeight: appStore.iconLabelFontWeightValue,
                     shouldAllowHover: shouldAllowHover,
-                    externalScale: isCenterCreatingTarget ? 1.2 : nil,
+                    externalScale: isCenterCreatingTarget ? 1.3 : nil,
                     hoverMagnificationEnabled: appStore.enableHoverMagnification,
                     hoverMagnificationScale: CGFloat(appStore.hoverMagnificationScale),
                     activePressEffectEnabled: appStore.enableActivePressEffect,

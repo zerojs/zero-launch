@@ -659,6 +659,18 @@ extension CAGridView {
     func updateDragging(at point: CGPoint) {
         dragCurrentPoint = point
 
+        // 本次事件确认的 dwell 目标:仅"悬停文件夹中心"分支会赋值。
+        // 事件结束时统一收敛:目标一致则保持计时(不重置),否则取消,
+        // 避免每次 mouseDragged 都重启计时器导致永远凑不满 dwell 时长。
+        var dwellTarget: Int? = nil
+        defer {
+            if let dwellTarget {
+                startFolderDwellTimer(at: dwellTarget)
+            } else {
+                cancelFolderDwellTimer()
+            }
+        }
+
         // Update dragging layer position
         CATransaction.begin()
         CATransaction.setDisableActions(true)
@@ -695,6 +707,8 @@ extension CAGridView {
                         // Hovering over folder center - highlight for move into folder
                         highlightDropTarget(at: hoverIndex)
                         updateIconPositionsForDrag(hoverIndex: isCrossPage ? hoverIndex : nil)
+                        // 悬停文件夹中心持续 dwell 时长后自动展开该文件夹
+                        dwellTarget = hoverIndex
                     } else {
                         clearDropTargetHighlight()
                         updateIconPositionsForDrag(hoverIndex: hoverIndex)
@@ -722,6 +736,56 @@ extension CAGridView {
         }
     }
     
+    // MARK: - 拖拽悬停文件夹自动展开(dwell auto-open)
+
+    /// 悬停文件夹投放区超过 folderDwellDuration 后自动展开该文件夹。
+    /// 同一目标只计时一次;目标变化或离开投放区时由 updateDragging 的
+    /// defer 统一收敛(cancelFolderDwellTimer)。计时器运行于 .common 模式,
+    /// 保证拖拽事件跟踪期间仍能触发。
+    func startFolderDwellTimer(at index: Int) {
+        guard isDraggingItem, case .app = draggingItem else {
+            cancelFolderDwellTimer()
+            return
+        }
+        guard index < items.count, case .folder = items[index] else {
+            cancelFolderDwellTimer()
+            return
+        }
+        if folderDwellTargetIndex == index, folderDwellTimer?.isValid == true { return }
+        cancelFolderDwellTimer()
+        folderDwellTargetIndex = index
+        let timer = Timer(timeInterval: folderDwellDuration, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            self.folderDwellTimer = nil
+            self.folderDwellTargetIndex = nil
+            self.handleFolderDwellFire(at: index)
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        folderDwellTimer = timer
+    }
+
+    func cancelFolderDwellTimer() {
+        folderDwellTimer?.invalidate()
+        folderDwellTimer = nil
+        folderDwellTargetIndex = nil
+    }
+
+    private func handleFolderDwellFire(at index: Int) {
+        guard isDraggingItem, let dragItem = draggingItem,
+              case .app(let app) = dragItem,
+              index < items.count, case .folder(let folder) = items[index] else { return }
+
+        var centerInWindow: CGPoint?
+        if let center = iconCenter(for: index) {
+            centerInWindow = convert(center, to: nil)
+        }
+
+        // 取消主网格上的拖拽(视觉复位,应用保持原槽位);
+        // 鼠标仍按住,由文件夹视图通过事件监视器接力后续拖拽事件。
+        cancelDragging()
+        onDwellOpenFolder?(app, folder, centerInWindow)
+    }
+
     func updateIconPositionsForDrag(hoverIndex: Int?) {
         guard draggingIndex != nil else { return }
         
@@ -1091,7 +1155,8 @@ extension CAGridView {
         let selectionScale: CGFloat = 1.2
         var iconScale: CGFloat = 1.0
         if dropTargetIndex == index {
-            iconScale = 1.1
+            // 拖拽悬停投放目标(文件夹/建文件夹目标)的放大倍数
+            iconScale = 1.3
         } else if selectedIndex == index {
             iconScale = selectionScale
         } else if hoverMagnificationEnabled, hoveredIndex == index {
@@ -1310,6 +1375,7 @@ extension CAGridView {
     }
 
     func endDragging(at point: CGPoint) {
+        cancelFolderDwellTimer()
         guard let dragIndex = draggingIndex, let dragItem = draggingItem else {
             cancelDragging()
             return
@@ -1424,6 +1490,10 @@ extension CAGridView {
     func cancelDragging() {
         // Reset icon positions to original
         resetIconPositions()
+        cancelFolderDwellTimer()
+        // 清除按下态:否则 dwell 展开后的残余 mouseDragged/mouseUp 事件
+        // 会误触发重新开始拖拽或把"点击"派发到应用上
+        pressedIndex = nil
 
         // Remove dragging layer
         draggingLayer?.removeFromSuperlayer()

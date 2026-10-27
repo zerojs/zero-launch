@@ -175,6 +175,14 @@ final class CAGridView: NSView, CALayerDelegate, NSDraggingSource {
     let longPressDuration: TimeInterval = 0.5
     var pressedIndex: Int?
 
+    // 拖拽悬停文件夹自动展开(dwell auto-open):
+    // 拖拽应用悬停在文件夹投放区持续 folderDwellDuration 后自动展开该文件夹,
+    // 拖拽经 onDwellOpenFolder 接力进文件夹视图继续。
+    var onDwellOpenFolder: ((AppInfo, FolderInfo, CGPoint?) -> Void)?
+    var folderDwellTimer: Timer?
+    var folderDwellTargetIndex: Int?
+    let folderDwellDuration: TimeInterval = 2.0
+
     // 跨页拖拽
     var edgeDragTimer: Timer?
     let edgeDragThreshold: CGFloat = 60  // 边缘检测区域宽度

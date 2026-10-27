@@ -142,3 +142,33 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 - LocalizationManager 按语言懒加载(实测构建成本仅数毫秒,性价比低);
 - CAFolderGridView 的 `rebuildLayers` 仍为全量(文件夹视图每次打开新建,收益有限);
 - 上述修改尚未向上游提交 PR;提交前建议按上游贡献规范拆分为独立 commit。
+
+---
+
+## 八、交互调整(2026-10-26)
+
+### 1. 拖拽投放目标缩放 1.1 → 1.3
+- **范围**:CA 主网格 `applyScaleForIndex`(`CAGridView+Input.swift`)、旧 SwiftUI 渲染路径 `externalScale`(`LaunchpadView.swift`)。
+- 拖拽应用悬停在文件夹(或应用,用于建文件夹)投放区时,图标放大倍数由 1.1 提升到 1.3(动画时长保持 0.12s easeOut)。
+- 对照:键盘选中仍为 1.2,普通悬停放大仍走 `hoverMagnificationScale`(默认 1.1,可配置)。
+
+### 2. 拖拽悬停文件夹 3 秒自动展开(dwell auto-open)
+**链路**(仅 CA 渲染路径):
+
+1. **计时**(`CAGridView+Input.swift`):`updateDragging` 中仅"悬停文件夹中心且拖拽物为应用"分支设置 `dwellTarget`;函数用 `defer` 统一收敛——目标不变则保持计时,否则取消。计时器跑在 `.common` 模式,拖拽事件跟踪期间也能触发。`cancelDragging` / `endDragging` 均清理计时器。
+2. **触发**(`handleFolderDwellFire`):取消主网格拖拽(视觉复位,应用保持原槽位,并清 `pressedIndex` 防止残余事件误触发),带出文件夹图标中心作为展开动画锚点,回调 `onDwellOpenFolder(app, folder, anchor)`。
+3. **接力**(`CAGridViewRepresentable`):写入 `AppStore.incomingFolderDragApp / incomingFolderDragFolderID / incomingFolderDragScreenLocation`,随后走原有 `onOpenFolder`(带锚点展开动画)。
+4. **接管**(`CAFolderGridViewRepresentable.updateNSView`):出现且 ID 匹配时消费接力状态 → `CAFolderGridView.beginExternalDrag(app:screenPoint:)`。
+5. **继续拖拽**(`CAFolderGridView`):原始 `mouseDown` 发生在主网格,事件序列不会路由到文件夹视图,故用 `NSEvent` 本地监视器接管 `leftMouseDragged / leftMouseUp`。
+   - 拖拽预览层沿用内部拖拽的 `makeDraggingLayer`;
+   - 分页模式复用左右边缘自动翻页;
+   - 插入位置预览:分页模式复用 `updatePagedReorderPreview(source: apps.count)` 的"source 不在当前页 → 后方让位"分支,纵向模式单独实现插入缺口;
+   - 松手在网格内 → `onDropExternalApp(app, index)` → `AppStore.addAppToFolder(app, folder:, at:)`(新增带位置的插入重载,先按路径去重再插入,复用原持久化流程);
+   - 松手在网格外 → `onExternalDragCancelled` → 关闭文件夹,应用留在主网格原位;
+   - 展开动画期间已松手(`NSEvent.pressedMouseButtons` 检查)→ 放弃接力,文件夹保持打开。
+
+**已知限制**:
+- 旧 SwiftUI 渲染引擎(`useCAGridRenderer == false`)未实现 dwell 展开与拖入接力,仅 CA 路径生效;
+- dwell 时长固定 3 秒(未做成配置项)。
+
+**验证状态**:7 个改动文件 `swiftc -parse` 语法检查通过;完整 `xcodebuild` 编译因 Xcode 27.1 许可协议未同意而未执行(需本机 `sudo .../xcodebuild -license accept`)。
