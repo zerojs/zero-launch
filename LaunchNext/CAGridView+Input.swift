@@ -1488,6 +1488,12 @@ extension CAGridView {
     }
 
     func cancelDragging() {
+        // 必须在清空 dropTargetIndex 前记下原高亮下标:
+        // 图标 1.3x 放大是由 applyScaleForIndex 依据 dropTargetIndex 计算出来的,
+        // 直接把 dropTargetIndex 置 nil 不会让已经应用的变换自动回弹。
+        // 典型复现:dwell 悬停文件夹展开 -> handleFolderDwellFire 调 cancelDragging
+        // -> 拖到面板外松手关闭文件夹,文件夹图标仍停在放大态。
+        let previousDropTarget = dropTargetIndex
         // Reset icon positions to original
         resetIconPositions()
         cancelFolderDwellTimer()
@@ -1503,6 +1509,9 @@ extension CAGridView {
         draggingIndex = nil
         draggingItem = nil
         dropTargetIndex = nil
+        if let previousDropTarget {
+            applyScaleForIndex(previousDropTarget, animated: true)
+        }
         restoreBatchHiddenCompanionLayers()
         hardSnapToCurrentPage()
         logIfMismatch("cancelDragging")

@@ -539,10 +539,16 @@ struct LaunchpadView: View {
     }
 
     private func handleHeaderBackgroundTap() {
-        guard appStore.openFolder == nil,
-              !appStore.isSetting,
-              !appStore.isFolderNameEditing,
+        guard !appStore.isSetting,
               draggingItem == nil else { return }
+        // 顶栏也算"文件夹外部":重命名中点击它同样只退出编辑态
+        if appStore.openFolder != nil {
+            if appStore.isFolderNameEditing {
+                appStore.folderNameEditCancelRequestID = appStore.openFolder?.id
+            }
+            return
+        }
+        guard !appStore.isFolderNameEditing else { return }
         AppDelegate.shared?.hideWindow()
     }
 
@@ -733,18 +739,24 @@ struct LaunchpadView: View {
                     .ignoresSafeArea()
                     .transition(.opacity)
                     .onTapGesture {
-                        if !appStore.isFolderNameEditing {
-                            let closingFolder = appStore.openFolder
-                            withAnimation(LNAnimations.springFast) { appStore.openFolder = nil }
-                            if let folder = closingFolder,
-                               let idx = filteredItems.firstIndex(of: .folder(folder)) {
-                                isKeyboardNavigationActive = true
-                                selectedIndex = idx
-                                let targetPage = idx / config.itemsPerPage
-                                if targetPage != appStore.currentPage { appStore.currentPage = targetPage }
-                            }
-                            isSearchFieldFocused = true
+                        // 重命名进行中:外部点击先退出编辑态(提交名称),本次点击不再
+                        // 继续关闭文件夹,避免"只是想结束改名"却被连文件夹一起关掉。
+                        // 点背板不会转移第一响应者,TextField 的 @FocusState 收不到失焦,
+                        // 所以只能通过 AppStore 显式下发一次退出请求。
+                        if appStore.isFolderNameEditing {
+                            appStore.folderNameEditCancelRequestID = appStore.openFolder?.id
+                            return
                         }
+                        let closingFolder = appStore.openFolder
+                        withAnimation(LNAnimations.springFast) { appStore.openFolder = nil }
+                        if let folder = closingFolder,
+                           let idx = filteredItems.firstIndex(of: .folder(folder)) {
+                            isKeyboardNavigationActive = true
+                            selectedIndex = idx
+                            let targetPage = idx / config.itemsPerPage
+                            if targetPage != appStore.currentPage { appStore.currentPage = targetPage }
+                        }
+                        isSearchFieldFocused = true
                     }
             }
 

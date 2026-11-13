@@ -138,6 +138,9 @@ struct FolderView: View {
         .onChange(of: appStore.folderRenameRequestID) {
             consumeRenameRequestIfNeeded()
         }
+        .onChange(of: appStore.folderNameEditCancelRequestID) {
+            consumeNameEditCancelRequestIfNeeded()
+        }
         .onReceive(ControllerInputManager.shared.commands.receive(on: RunLoop.main)) { command in
             handleControllerCommand(command)
         }
@@ -169,13 +172,37 @@ struct FolderView: View {
             Spacer()
             VStack(spacing: 8) {
                 if isEditingName {
-                    TextField(appStore.localized(.folderNamePlaceholder), text: $folderName)
+                    // 空 prompt：TextField 内建 prompt 由 AppKit 渲染，颜色固定为 placeholderTextColor
+                    // (浅色模式下偏黑)，无法通过 SwiftUI 修饰符改色。因此把 prompt 置空，
+                    // 改用 overlay 自绘占位文案，才能做到「白色 + 半透明」。
+                    TextField("", text: $folderName)
                         .textFieldStyle(.plain)
                         .multilineTextAlignment(.center)
                         .font(.title)
-                        .foregroundColor(AppStore.customIconLabelNSColor.map { Color(nsColor: $0) } ?? Color.primary)
+                        // 输入框底色是半透明深色，编辑态文字统一用白色，保证对比度
+                        .foregroundColor(.white)
                         .focused($isTextFieldFocused)
-                        .padding()
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 14)
+                        // prompt 置空后 TextField 内在宽度会塌缩成一个窄条,
+                        // 因此由文本实测宽度反推输入框宽度(见 editNameBoxWidth)
+                        .frame(width: editNameBoxWidth)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.black.opacity(0.28))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
+                        )
+                        .overlay(alignment: .center) {
+                            if folderName.isEmpty {
+                                Text(appStore.localized(.folderNamePlaceholder))
+                                    .font(.title)
+                                    .foregroundColor(.white.opacity(0.45))
+                                    .allowsHitTesting(false)
+                            }
+                        }
                         .onSubmit {
                             finishEditing()
                         }
@@ -207,6 +234,17 @@ struct FolderView: View {
             Spacer()
         }
         .padding(.horizontal, titlePadding)
+    }
+
+    /// 重命名输入框宽度:按「当前输入内容(为空时用占位文案)」的实测宽度
+    /// 加上左右内边距,再夹在 [88, 340] 区间内,避免空内容时框塌成窄条、
+    /// 也避免短名字留出一大片空白。
+    /// 用 AppKit 同步量字体度量,而不是先渲染再回读尺寸——后者会带来一帧宽度跳变。
+    private var editNameBoxWidth: CGFloat {
+        let displayText = folderName.isEmpty ? appStore.localized(.folderNamePlaceholder) : folderName
+        let font = NSFont.preferredFont(forTextStyle: .title1) // SwiftUI .title 对应的原生字号
+        let textWidth = (displayText as NSString).size(withAttributes: [.font: font]).width
+        return min(max(textWidth.rounded(.up) + 28, 88), 340) // 28 = 左右 padding 各 14
     }
 
     private var shouldShowFolderPageIndicator: Bool {
@@ -343,9 +381,20 @@ struct FolderView: View {
             startEditing()
         }
     }
+
+    /// 消费"点击文件夹外部"发来的退出编辑请求。
+    /// 提交语义与点击文件夹内部一致(调用 finishEditing),不额外关闭文件夹。
+    private func consumeNameEditCancelRequestIfNeeded() {
+        guard appStore.folderNameEditCancelRequestID == folder.id else { return }
+        appStore.folderNameEditCancelRequestID = nil
+        guard isEditingName else { return }
+        finishEditing()
+    }
     
     private func finishEditing() {
         isEditingName = false
+        // 主动交还焦点:输入框移除后仍可能残留 field editor 成为第一响应者
+        isTextFieldFocused = false
         appStore.isFolderNameEditing = false
         // 允许名称为纯空格（用户自定义视觉占位），仅阻止完全空字符串
         if !folderName.isEmpty {

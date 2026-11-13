@@ -2256,6 +2256,10 @@ final class AppStore: ObservableObject {
     @Published var openFolderActivatedByKeyboard: Bool = false
     @Published var isFolderNameEditing: Bool = false
     @Published var folderRenameRequestID: String? = nil
+    /// 请求退出文件夹重命名:点击文件夹外部时由 LaunchpadView 写入 folder.id,
+    /// FolderView 消费后执行 finishEditing()。之所以要这个信号,是因为点击
+    /// 半透明背板不会改变第一响应者,TextField 的 @FocusState 感知不到失焦。
+    @Published var folderNameEditCancelRequestID: String? = nil
     @Published var handoffDraggingApp: AppInfo? = nil
     @Published var handoffDragScreenLocation: CGPoint? = nil
 
