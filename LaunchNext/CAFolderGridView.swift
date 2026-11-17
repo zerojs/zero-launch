@@ -90,6 +90,19 @@ final class CAFolderGridView: NSView {
     var onDropExternalApp: ((AppInfo, Int) -> Void)?
     var onExternalDragCancelled: (() -> Void)?
 
+    // 长按卸载(抖动模式):与主网格共用 AppStore.isUninstallJiggleMode,
+    // 由 CAFolderGridViewRepresentable 下发,本视图只负责呈现与交互。
+    var isJiggleMode: Bool = false {
+        didSet {
+            guard isJiggleMode != oldValue else { return }
+            applyJiggleState()
+        }
+    }
+    var isAppRemovable: ((AppInfo) -> Bool)?
+    var onEnterJiggleMode: (() -> Void)?
+    var onExitJiggleMode: (() -> Void)?
+    var onRequestUninstallApp: ((AppInfo) -> Void)?
+
     private let baseContentInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
     private var contentInsets: NSEdgeInsets {
         var insets = baseContentInsets
@@ -154,6 +167,10 @@ final class CAFolderGridView: NSView {
     private var isExternalDragging = false
     private var externalDragMonitor: Any?
 
+    // 长按进入卸载抖动模式的计时器
+    private var jiggleLongPressTimer: Timer?
+    private let jiggleLongPressDuration: TimeInterval = 0.9
+
     var displayedPage: Int { currentPage }
     var displayedPageCount: Int { pageCount }
 
@@ -177,6 +194,7 @@ final class CAFolderGridView: NSView {
         }
         displayLink?.invalidate()
         edgeDragTimer?.invalidate()
+        jiggleLongPressTimer?.invalidate()
         pageScrollSnapWorkItem?.cancel()
     }
 
@@ -343,6 +361,10 @@ final class CAFolderGridView: NSView {
             selectedIndex = apps.indices.first
         }
         updateLayout(animated: false)
+        // 抖动模式下删掉一个 app 会重建图层,动画与徽标需要重新套一遍
+        if isJiggleMode {
+            applyJiggleState()
+        }
     }
 
     private func makeAppLayer(for app: AppInfo) -> CALayer {
@@ -387,6 +409,29 @@ final class CAFolderGridView: NSView {
         warningLayer.string = "!"
         warningLayer.isHidden = FileManager.default.fileExists(atPath: app.url.path)
         container.addSublayer(warningLayer)
+
+        // 长按卸载的删除徽标(左上角「×」),默认隐藏
+        let badgeLayer = CALayer()
+        badgeLayer.name = "uninstallBadge"
+        badgeLayer.isHidden = true
+        badgeLayer.zPosition = 30
+        badgeLayer.contentsScale = backingScale
+        badgeLayer.backgroundColor = NSColor(white: 0.93, alpha: 0.98).cgColor
+        badgeLayer.borderColor = NSColor.black.withAlphaComponent(0.12).cgColor
+        badgeLayer.borderWidth = 0.5
+        badgeLayer.shadowColor = NSColor.black.cgColor
+        badgeLayer.shadowOpacity = 0.28
+        badgeLayer.shadowRadius = 2
+        badgeLayer.shadowOffset = CGSize(width: 0, height: -1)
+
+        let badgeMark = CAShapeLayer()
+        badgeMark.name = "uninstallBadgeMark"
+        badgeMark.fillColor = NSColor.clear.cgColor
+        badgeMark.strokeColor = NSColor(white: 0.28, alpha: 1).cgColor
+        badgeMark.lineCap = .round
+        badgeMark.contentsScale = backingScale
+        badgeLayer.addSublayer(badgeMark)
+        container.addSublayer(badgeLayer)
 
         setIcon(for: iconLayer, app: app)
         return container
@@ -504,6 +549,16 @@ final class CAFolderGridView: NSView {
                                         height: side)
             warningLayer.cornerRadius = side / 2
         }
+        if let badgeLayer = layer.sublayers?.first(where: { $0.name == "uninstallBadge" }) {
+            let badgeFrame = uninstallBadgeFrame(iconFrame: iconFrame)
+            badgeLayer.frame = badgeFrame
+            badgeLayer.cornerRadius = badgeFrame.width / 2
+            if let markLayer = badgeLayer.sublayers?.first(where: { $0.name == "uninstallBadgeMark" }) as? CAShapeLayer {
+                markLayer.frame = badgeLayer.bounds
+                markLayer.lineWidth = max(1.6, badgeFrame.width * 0.11)
+                markLayer.path = uninstallBadgeMarkPath(in: badgeLayer.bounds)
+            }
+        }
         if let index = appLayers.firstIndex(of: layer) {
             applyScale(at: index, animated: false)
         }
@@ -612,7 +667,7 @@ final class CAFolderGridView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
-        guard hoverMagnificationEnabled, !isDraggingItem else {
+        guard hoverMagnificationEnabled, !isDraggingItem, !isJiggleMode else {
             updateHoverIndex(nil)
             return
         }
@@ -627,10 +682,32 @@ final class CAFolderGridView: NSView {
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         let point = convert(event.locationInWindow, from: nil)
-        guard let index = itemIndex(at: point) else { return }
+        guard let index = itemIndex(at: point) else {
+            // 抖动模式下点击文件夹内空白处 → 退出该模式(与主网格一致)
+            if isJiggleMode { onExitJiggleMode?() }
+            return
+        }
+        cancelJiggleLongPress()
+
+        // 抖动模式下优先命中左上角的删除徽标
+        if isJiggleMode, apps.indices.contains(index),
+           let badgeRect = uninstallBadgeHitRect(for: index), badgeRect.contains(point) {
+            onRequestUninstallApp?(apps[index])
+            return
+        }
+
         pressedIndex = index
         dragStartPoint = point
         applyScale(at: index, animated: true)
+
+        // 长按进入卸载抖动模式;拖拽仍然走"移动超过 10px 即起拖",互不抢占
+        if !isJiggleMode, apps.indices.contains(index) {
+            let timer = Timer(timeInterval: jiggleLongPressDuration, repeats: false) { [weak self] _ in
+                self?.handleLongPressForUninstall(at: index)
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            jiggleLongPressTimer = timer
+        }
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -639,6 +716,7 @@ final class CAFolderGridView: NSView {
             guard !isLayoutLocked else { return }
             let distance = hypot(point.x - dragStartPoint.x, point.y - dragStartPoint.y)
             if distance > 10, apps.indices.contains(pressedIndex) {
+                cancelJiggleLongPress()
                 startDragging(at: pressedIndex, point: point)
             }
         }
@@ -648,6 +726,7 @@ final class CAFolderGridView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        cancelJiggleLongPress()
         let point = convert(event.locationInWindow, from: nil)
         if isDraggingItem {
             finishDragging(at: point)
@@ -656,6 +735,8 @@ final class CAFolderGridView: NSView {
         if let index = pressedIndex {
             pressedIndex = nil
             applyScale(at: index, animated: true)
+            // 抖动模式下点击 app 不启动,避免删除过程中误触
+            guard !isJiggleMode else { return }
             if itemIndex(at: point) == index, apps.indices.contains(index) {
                 let app = apps[index]
                 if FileManager.default.fileExists(atPath: app.url.path) {
@@ -681,7 +762,12 @@ final class CAFolderGridView: NSView {
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 {
-            onClose?()
+            // 抖动模式下 Esc 先退出该模式,再按一次才关闭文件夹
+            if isJiggleMode {
+                onExitJiggleMode?()
+            } else {
+                onClose?()
+            }
             return
         }
         guard !apps.isEmpty else {
@@ -1552,5 +1638,102 @@ final class CAFolderGridView: NSView {
             icon.transform = CATransform3DMakeScale(iconScale, iconScale, 1)
         }
         CATransaction.commit()
+    }
+
+    // MARK: - 长按卸载(抖动模式)
+
+    /// 删除徽标直径:跟随图标尺寸缩放,并夹在一个可点击的合理区间
+    private var uninstallBadgeDiameter: CGFloat {
+        max(18, min(28, iconSize * 0.3))
+    }
+
+    /// 徽标在图层内的位置(相对 container 的 icon 区域左上角,略微外溢)
+    private func uninstallBadgeFrame(iconFrame: CGRect) -> CGRect {
+        let diameter = uninstallBadgeDiameter
+        let overflow = diameter * 0.16
+        return CGRect(x: iconFrame.minX - overflow,
+                      y: iconFrame.maxY - diameter * 0.84,
+                      width: diameter,
+                      height: diameter)
+    }
+
+    /// 徽标上的「×」
+    private func uninstallBadgeMarkPath(in bounds: CGRect) -> CGPath {
+        let path = CGMutablePath()
+        let inset = bounds.width * 0.30
+        path.move(to: CGPoint(x: bounds.minX + inset, y: bounds.minY + inset))
+        path.addLine(to: CGPoint(x: bounds.maxX - inset, y: bounds.maxY - inset))
+        path.move(to: CGPoint(x: bounds.minX + inset, y: bounds.maxY - inset))
+        path.addLine(to: CGPoint(x: bounds.maxX - inset, y: bounds.minY + inset))
+        return path
+    }
+
+    /// 徽标在视图坐标下的可点击区域(带一点扩展,便于点中)
+    private func uninstallBadgeHitRect(for index: Int) -> CGRect? {
+        guard itemFrames.indices.contains(index) else { return nil }
+        let frame = itemFrames[index]
+        guard frame.width > 0, frame.height > 0 else { return nil }
+        let metrics = makeMetrics()
+        let diameter = uninstallBadgeDiameter
+        let overflow = diameter * 0.16
+        let iconX = frame.midX - iconSize / 2
+        // 与 layoutSublayers 里 icon 的相对位置保持一致
+        let iconY = frame.minY + metrics.labelHeight + metrics.labelTopSpacing
+        let rect = CGRect(x: iconX - overflow,
+                          y: iconY + iconSize - diameter * 0.84,
+                          width: diameter,
+                          height: diameter)
+        return rect.insetBy(dx: -4, dy: -4)
+    }
+
+    private func cancelJiggleLongPress() {
+        jiggleLongPressTimer?.invalidate()
+        jiggleLongPressTimer = nil
+    }
+
+    private func handleLongPressForUninstall(at index: Int) {
+        cancelJiggleLongPress()
+        guard !isJiggleMode, !isDraggingItem, apps.indices.contains(index) else { return }
+        guard pressedIndex == index else { return }
+        pressedIndex = nil
+        applyScale(at: index, animated: true)
+        onEnterJiggleMode?()
+    }
+
+    /// 依据 isJiggleMode 统一刷新抖动动画与徽标显隐。幂等,可重复调用。
+    private func applyJiggleState() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+
+        if isJiggleMode {
+            updateHoverIndex(nil)
+            for (index, layer) in appLayers.enumerated() {
+                guard index < apps.count else { continue }
+                addJiggleAnimation(to: layer, seed: index)
+                let removable = isAppRemovable?(apps[index]) ?? false
+                layer.sublayers?.first(where: { $0.name == "uninstallBadge" })?.isHidden = !removable
+            }
+        } else {
+            for layer in appLayers {
+                layer.removeAnimation(forKey: "jiggle")
+                layer.sublayers?.first(where: { $0.name == "uninstallBadge" })?.isHidden = true
+            }
+        }
+
+        CATransaction.commit()
+    }
+
+    private func addJiggleAnimation(to layer: CALayer, seed: Int) {
+        guard layer.animation(forKey: "jiggle") == nil else { return }
+        // 与主网格保持一致:约 1.3 度,一个完整往返 0.3s
+        let angle: CGFloat = 0.022
+        let animation = CAKeyframeAnimation(keyPath: "transform.rotation.z")
+        animation.values = [-angle, angle, -angle]
+        animation.keyTimes = [0, 0.5, 1]
+        animation.duration = 0.3
+        animation.repeatCount = .infinity
+        animation.isRemovedOnCompletion = false
+        animation.timeOffset = Double((seed * 37) % 15) / 15.0 * animation.duration
+        layer.add(animation, forKey: "jiggle")
     }
 }

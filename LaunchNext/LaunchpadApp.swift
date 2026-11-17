@@ -1509,6 +1509,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSGestureR
     }
     
     func hideWindow() {
+        // 模态弹窗(删除 App 确认框)期间一律不允许收起。
+        // 这里而不是只在 windowDidResignKey 里拦截:把守唯一出口,
+        // 才能覆盖"点弹窗按钮时被当成点了空白处"之类的旁路。
+        guard modalAlertDepth == 0 else { return }
+        // 抖动模式是一次性的编辑态,窗口收起后不应该带到下一次呼出
+        if appStore.isUninstallJiggleMode {
+            appStore.isUninstallJiggleMode = false
+        }
         pendingHide = true
         pendingShow = false
         startPendingWindowTransition()
@@ -1746,11 +1754,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSGestureR
         return sender.frameRect(forContentRect: NSRect(origin: .zero, size: clamped)).size
     }
     
+    // 模态弹窗(如删除 App 的确认框)显示期间禁止自动隐藏。
+    // NSAlert.runModal() 会让启动台主窗口 resign key/main,
+    // 原本会被误判成"用户点了别处",导致弹窗出现的同时启动台被关掉。
+    // 用计数而不是 Bool:确认框与随后的失败提示框可能前后衔接。
+    private var modalAlertDepth: Int = 0
+
+    func beginModalAlertPresentation() { modalAlertDepth += 1 }
+    func endModalAlertPresentation() { modalAlertDepth = max(0, modalAlertDepth - 1) }
+
     func windowDidResignKey(_ notification: Notification) { autoHideIfNeeded() }
     func windowDidResignMain(_ notification: Notification) { autoHideIfNeeded() }
     private func autoHideIfNeeded() {
         guard !isPerformingExternalSystemDrag else { return }
         guard !appStore.isSetting else { return }
+        guard modalAlertDepth == 0 else { return }
         hideWindow()
     }
     

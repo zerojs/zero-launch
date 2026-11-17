@@ -73,6 +73,10 @@ final class CAGridView: NSView, CALayerDelegate, NSDraggingSource {
             if enableIconPreload {
                 preloadIcons()
             }
+            // 抖动模式下删掉一个 app 会重建/复用图层,动画与徽标都需要重新套一遍
+            if isJiggleMode {
+                applyJiggleState()
+            }
         }
     }
     var needsLayoutRefresh = true
@@ -172,8 +176,24 @@ final class CAGridView: NSView, CALayerDelegate, NSDraggingSource {
     var dragCurrentPoint: CGPoint = .zero
     var dropTargetIndex: Int?
     var longPressTimer: Timer?
-    let longPressDuration: TimeInterval = 0.5
+    /// 长按计时时长:按住不动达到该时长即进入卸载抖动模式。
+    /// 拖拽不再依赖这个计时器(移动超过阈值就直接起拖),两者不会互相抢占。
+    let longPressDuration: TimeInterval = 0.9
     var pressedIndex: Int?
+
+    // 长按卸载(抖动模式,参考 macOS Launchpad / iOS 主屏)
+    /// 抖动模式开关;真实状态源在 AppStore.isUninstallJiggleMode,由 updateNSView 同步进来
+    var isJiggleMode: Bool = false {
+        didSet {
+            guard isJiggleMode != oldValue else { return }
+            applyJiggleState()
+        }
+    }
+    /// 应用是否可被直接移到废纸篓(由 Representable 注入,复用 AppStore 的权限判断)
+    var isAppRemovable: ((AppInfo) -> Bool)?
+    var onEnterJiggleMode: (() -> Void)?
+    var onExitJiggleMode: (() -> Void)?
+    var onRequestUninstallApp: ((AppInfo) -> Void)?
 
     // 拖拽悬停文件夹自动展开(dwell auto-open):
     // 拖拽应用悬停在文件夹投放区持续 folderDwellDuration 后自动展开该文件夹,

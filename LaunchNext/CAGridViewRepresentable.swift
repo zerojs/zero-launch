@@ -206,6 +206,27 @@ struct CAGridViewRepresentable: NSViewRepresentable {
             }
         }
 
+        // 长按卸载:抖动模式的开关落在 AppStore,视图只负责同步与呈现
+        view.isAppRemovable = { app in
+            appStore.isAppRemovableByUser(app)
+        }
+        view.onEnterJiggleMode = {
+            DispatchQueue.main.async {
+                appStore.isUninstallJiggleMode = true
+            }
+        }
+        view.onExitJiggleMode = {
+            DispatchQueue.main.async {
+                appStore.isUninstallJiggleMode = false
+            }
+        }
+        view.onRequestUninstallApp = { [weak view] app in
+            DispatchQueue.main.async {
+                presentUninstallConfirmation(for: app, appStore: appStore, parentWindow: view?.window)
+            }
+        }
+        view.isJiggleMode = appStore.isUninstallJiggleMode
+
         return view
     }
 
@@ -261,6 +282,8 @@ struct CAGridViewRepresentable: NSViewRepresentable {
         nsView.animationsEnabled = appStore.enableAnimations
         nsView.animationDuration = appStore.animationDuration
         nsView.isScrollEnabled = appStore.openFolder == nil && !appStore.isSetting
+        // 长按卸载的抖动模式状态由 AppStore 下发(视图内 didSet 负责套动画与徽标)
+        nsView.isJiggleMode = appStore.isUninstallJiggleMode
         let allowsBatchSelection = appStore.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         nsView.contextMenuConfiguration = makeContextMenuConfiguration(allowsBatchSelection: allowsBatchSelection)
         nsView.allowsBatchSelectionMode = allowsBatchSelection

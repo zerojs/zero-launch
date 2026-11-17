@@ -18,6 +18,7 @@ struct CAFolderGridViewRepresentable: NSViewRepresentable {
         configure(view)
         wireCallbacks(view)
         view.apps = folder.apps
+        view.isJiggleMode = appStore.isUninstallJiggleMode
         return view
     }
 
@@ -29,6 +30,8 @@ struct CAFolderGridViewRepresentable: NSViewRepresentable {
         if appStore.folderLayoutMode == .paged, nsView.displayedPage != currentPage {
             nsView.setDisplayedPage(currentPage, animated: appStore.enableAnimations)
         }
+        // 长按卸载的抖动模式与主网格共用同一个状态源
+        nsView.isJiggleMode = appStore.isUninstallJiggleMode
 
         // 消费"主网格 dwell 自动展开"带来的接力拖拽状态(仅本文件夹匹配时)
         if let incomingApp = appStore.incomingFolderDragApp,
@@ -80,6 +83,27 @@ struct CAFolderGridViewRepresentable: NSViewRepresentable {
         let currentPageBinding = $currentPage
         let pageCountBinding = $pageCount
         let verticalScrollOffsetBinding = $verticalScrollOffset
+
+        // 长按卸载:抖动模式状态与主网格共用 AppStore.isUninstallJiggleMode
+        view.isAppRemovable = { app in
+            appStore.isAppRemovableByUser(app)
+        }
+        view.onEnterJiggleMode = {
+            DispatchQueue.main.async {
+                appStore.isUninstallJiggleMode = true
+            }
+        }
+        view.onExitJiggleMode = {
+            DispatchQueue.main.async {
+                appStore.isUninstallJiggleMode = false
+            }
+        }
+        view.onRequestUninstallApp = { [weak view] app in
+            DispatchQueue.main.async {
+                presentUninstallConfirmation(for: app, appStore: appStore, parentWindow: view?.window)
+            }
+        }
+
         view.onOpenApp = { app in
             DispatchQueue.main.async {
                 onLaunchApp(app)

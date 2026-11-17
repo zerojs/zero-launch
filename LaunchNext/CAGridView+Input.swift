@@ -39,7 +39,8 @@ extension CAGridView {
     }
 
     override func mouseMoved(with event: NSEvent) {
-        guard hoverMagnificationEnabled else {
+        // 抖动模式下不做悬停放大,避免与旋转动画/删除徽标互相干扰
+        guard hoverMagnificationEnabled, !isJiggleMode else {
             clearHover()
             return
         }
@@ -257,6 +258,15 @@ extension CAGridView {
         // print("🖱️ [CAGrid] mouseDown at \(location)")
 
         if let (item, index) = itemAt(location) {
+            // 抖动模式下优先命中左上角的删除徽标(命中后不进入按压/拖拽流程)
+            if isJiggleMode, case .app(let app) = item,
+               let badgeRect = uninstallBadgeHitRect(for: index),
+               badgeRect.contains(location) {
+                longPressTimer?.invalidate()
+                longPressTimer = nil
+                onRequestUninstallApp?(app)
+                return
+            }
             // print("🖱️ [CAGrid] Hit item: \(item.name) at index \(index)")
             if case .empty = item {
                 // 空白占位格子:视觉上是空白区域,与图标间隙一样
@@ -270,11 +280,11 @@ extension CAGridView {
                 setPressedIndex(index)
                 dragStartPoint = location
 
-                // 启动长按计时器（用于开始拖拽）
-                // 注意：必须添加到 .common 模式，否则在鼠标追踪期间不会触发
+                // 长按进入卸载抖动模式(参考 macOS Launchpad)。
+                // 拖拽不依赖这个计时器:移动超过阈值即起拖,长按与拖拽互不抢占。
                 longPressTimer?.invalidate()
                 let timer = Timer(timeInterval: longPressDuration, repeats: false) { [weak self] _ in
-                    self?.startDragging(item: item, index: index, at: location)
+                    self?.handleLongPressForUninstall(item: item, index: index)
                 }
                 RunLoop.main.add(timer, forMode: .common)
                 longPressTimer = timer
@@ -375,7 +385,12 @@ extension CAGridView {
 
             // 如果没有实际拖动（只是点击），则关闭窗口
             if abs(totalDrag) < 5 {
-                onEmptyAreaClicked?()
+                // 抖动模式下点击空白:先退出该模式,不直接隐藏窗口
+                if isJiggleMode {
+                    exitJiggleMode()
+                } else {
+                    onEmptyAreaClicked?()
+                }
                 return
             }
 
@@ -392,6 +407,14 @@ extension CAGridView {
 
             // 检查是否在同一个 item 上释放
             if let (item, index) = itemAt(location), index == idx {
+                // 抖动模式下:app 不启动(避免删除时误触),但文件夹仍然可以点开,
+                // 展开后文件夹内的 app 会继承当前抖动状态。
+                if isJiggleMode {
+                    if case .folder = item {
+                        onItemClicked?(item, index)
+                    }
+                    return
+                }
                 if isBatchSelectionMode {
                     if case .app(let app) = item {
                         toggleBatchSelection(forAppPath: app.url.path)

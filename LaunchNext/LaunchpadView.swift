@@ -2184,6 +2184,11 @@ extension LaunchpadView {
     }
 
     private func handleKeyEvent(_ event: NSEvent) -> NSEvent? {
+        // 长按卸载的抖动模式:Esc 先退出该模式,而不是直接隐藏窗口
+        if appStore.isUninstallJiggleMode, event.keyCode == 53 {
+            appStore.isUninstallJiggleMode = false
+            return nil
+        }
         if isFolderOpen {
             if event.keyCode == 53 { // esc
                 let closingFolder = appStore.openFolder

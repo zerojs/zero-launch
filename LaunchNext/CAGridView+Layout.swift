@@ -229,6 +229,29 @@ extension CAGridView {
             markLayer.contentsScale = iconBackingScale
             checkboxLayer.addSublayer(markLayer)
             containerLayer.addSublayer(checkboxLayer)
+
+            // 长按卸载模式的删除徽标(左上角「×」),默认隐藏
+            let badgeLayer = CALayer()
+            badgeLayer.name = "uninstallBadge"
+            badgeLayer.isHidden = true
+            badgeLayer.zPosition = 30
+            badgeLayer.contentsScale = iconBackingScale
+            badgeLayer.backgroundColor = NSColor(white: 0.93, alpha: 0.98).cgColor
+            badgeLayer.borderColor = NSColor.black.withAlphaComponent(0.12).cgColor
+            badgeLayer.borderWidth = 0.5
+            badgeLayer.shadowColor = NSColor.black.cgColor
+            badgeLayer.shadowOpacity = 0.28
+            badgeLayer.shadowRadius = 2
+            badgeLayer.shadowOffset = CGSize(width: 0, height: -1)
+
+            let badgeMark = CAShapeLayer()
+            badgeMark.name = "uninstallBadgeMark"
+            badgeMark.fillColor = NSColor.clear.cgColor
+            badgeMark.strokeColor = NSColor(white: 0.28, alpha: 1).cgColor
+            badgeMark.lineCap = .round
+            badgeMark.contentsScale = iconBackingScale
+            badgeLayer.addSublayer(badgeMark)
+            containerLayer.addSublayer(badgeLayer)
         }
 
         return containerLayer
@@ -410,6 +433,19 @@ extension CAGridView {
                     textLayer.isHidden = !showLabels
                     textLayer.frame = CGRect(x: 4, y: 0, width: labelWidth, height: labelHeight)
                 }
+
+                // 长按卸载徽标:贴在图标左上角,略微外溢(masksToBounds=false,不会被裁)
+                if let badgeLayer = containerLayer.sublayers?.first(where: { $0.name == "uninstallBadge" }),
+                   let iconLayer = containerLayer.sublayers?.first(where: { $0.name == "icon" }) {
+                    let badgeFrame = uninstallBadgeFrame(iconFrame: iconLayer.frame)
+                    badgeLayer.frame = badgeFrame
+                    badgeLayer.cornerRadius = badgeFrame.width / 2
+                    if let markLayer = badgeLayer.sublayers?.first(where: { $0.name == "uninstallBadgeMark" }) as? CAShapeLayer {
+                        markLayer.frame = badgeLayer.bounds
+                        markLayer.lineWidth = max(1.6, badgeFrame.width * 0.11)
+                        markLayer.path = uninstallBadgeMarkPath(in: badgeLayer.bounds)
+                    }
+                }
             }
         }
 
@@ -467,6 +503,17 @@ extension CAGridView {
         path.move(to: start)
         path.addLine(to: mid)
         path.addLine(to: end)
+        return path
+    }
+
+    /// 删除徽标上的「×」
+    func uninstallBadgeMarkPath(in bounds: CGRect) -> CGPath {
+        let path = CGMutablePath()
+        let inset = bounds.width * 0.30
+        path.move(to: CGPoint(x: bounds.minX + inset, y: bounds.minY + inset))
+        path.addLine(to: CGPoint(x: bounds.maxX - inset, y: bounds.maxY - inset))
+        path.move(to: CGPoint(x: bounds.minX + inset, y: bounds.maxY - inset))
+        path.addLine(to: CGPoint(x: bounds.maxX - inset, y: bounds.minY + inset))
         return path
     }
 

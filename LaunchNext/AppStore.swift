@@ -2260,6 +2260,9 @@ final class AppStore: ObservableObject {
     /// FolderView 消费后执行 finishEditing()。之所以要这个信号,是因为点击
     /// 半透明背板不会改变第一响应者,TextField 的 @FocusState 感知不到失焦。
     @Published var folderNameEditCancelRequestID: String? = nil
+    /// 长按 app 进入的卸载抖动模式(参考 macOS Launchpad / iOS 主屏)。
+    /// 状态放在 AppStore 而不是网格视图里,是为了让顶层的 Esc 处理能干净地退出它。
+    @Published var isUninstallJiggleMode: Bool = false
     @Published var handoffDraggingApp: AppInfo? = nil
     @Published var handoffDragScreenLocation: CGPoint? = nil
 
@@ -6366,6 +6369,117 @@ final class AppStore: ObservableObject {
         let configuration = NSWorkspace.OpenConfiguration()
         needsReconciliationAfterExternalUninstall = true
         NSWorkspace.shared.open([target], withApplicationAt: helper, configuration: configuration) { _, _ in }
+        return true
+    }
+
+    // MARK: - 内置卸载(长按抖动模式 + 移到废纸篓)
+
+    /// 是否允许从 LaunchNext 直接把该应用移到废纸篓。
+    /// 系统卷上的应用(只读)以及父目录不可写的应用不提供删除徽标,
+    /// 避免徽标点了却删不掉。注意:移除目录项只需要父目录可写,
+    /// 所以 App Store 安装的 root 属主 app 通常也满足条件。
+    func isAppRemovableByUser(_ app: AppInfo) -> Bool {
+        let path = app.url.resolvingSymlinksInPath().path
+        guard path.lowercased().hasSuffix(".app") else { return false }
+        guard !path.hasPrefix("/System/") else { return false }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+              isDirectory.boolValue else { return false }
+        let parent = (path as NSString).deletingLastPathComponent
+        return FileManager.default.isWritableFile(atPath: parent)
+    }
+
+    /// 把应用移到废纸篓,成功后立即从清单移除(不进入"隐藏应用"名单)。
+    ///
+    /// 用两条路径:
+    /// 1. `FileManager.trashItem` —— 本质是把目录项 rename 进 `~/.Trash`,
+    ///    只需要**父目录**可写,不会绕到 Finder/LaunchServices,
+    ///    对 `/Applications` 下 root:wheel 属主的 app 成功率最高。
+    /// 2. 失败才回退 `NSWorkspace.recycle`(走 Finder 的回收站路径)。
+    ///
+    /// 仍可能失败的情形:目标 app 受"应用管理"(App Management, TCC)保护而
+    /// 本进程未获授权(ad-hoc 签名的调试构建尤其明显),或 app 位于只读卷。
+    func uninstallApp(_ app: AppInfo, completion: @escaping (Error?) -> Void) {
+        let url = app.url.resolvingSymlinksInPath()
+        let path = url.path
+
+        let finish: (Error?) -> Void = { [weak self] error in
+            DispatchQueue.main.async {
+                guard let self else {
+                    completion(error)
+                    return
+                }
+                if let error {
+                    completion(error)
+                    return
+                }
+                self.removeAppFromInventory(path: path)
+                completion(nil)
+            }
+        }
+
+        // trashItem 走文件系统 rename,大 bundle 跨卷时可能较慢,放到后台队列
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+                finish(nil)
+            } catch {
+                NSWorkspace.shared.recycle([url]) { results, recycleError in
+                    if let recycleError {
+                        finish(recycleError)
+                    } else if results[url] != nil || !FileManager.default.fileExists(atPath: path) {
+                        // 回退成功:文件确实已经离开原位置
+                        finish(nil)
+                    } else {
+                        // 被取消或没有实际移动,报第一段错误(信息更贴近文件系统)
+                        finish(error)
+                    }
+                }
+            }
+        }
+    }
+
+    /// 从应用清单、文件夹内容与当前布局中彻底移除指定路径的应用。
+    /// 与 hideApp 的区别:不写入隐藏名单,应用重新安装回来后仍然会出现在网格里。
+    @discardableResult
+    func removeAppFromInventory(path: String) -> Bool {
+        let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
+        var didChange = false
+
+        if apps.contains(where: { $0.url.standardizedFileURL.path == normalized }) {
+            apps.removeAll { $0.url.standardizedFileURL.path == normalized }
+            didChange = true
+        }
+
+        for index in folders.indices {
+            let before = folders[index].apps.count
+            folders[index].apps.removeAll { $0.url.standardizedFileURL.path == normalized }
+            if folders[index].apps.count != before { didChange = true }
+        }
+
+        let beforeCount = items.count
+        items.removeAll { item in
+            switch item {
+            case .app(let app):
+                return app.url.standardizedFileURL.path == normalized
+            case .missingApp(let placeholder):
+                return URL(fileURLWithPath: placeholder.bundlePath).standardizedFileURL.path == normalized
+            case .folder, .empty:
+                return false
+            }
+        }
+        if items.count != beforeCount { didChange = true }
+
+        guard didChange else { return false }
+
+        folders = sanitizedFolders(folders)
+        applyHiddenFilteringToOpenFolder()
+        compactItemsWithinPages()
+        removeEmptyPages()
+        triggerFolderUpdate()
+        triggerGridRefresh()
+        updateCacheAfterChanges()
+        saveAllOrder()
         return true
     }
 
