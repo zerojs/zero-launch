@@ -40,37 +40,9 @@ final class AppContextMenuTests: XCTestCase {
         )
     }
 
-    func testCAMainGridBatchSelectionUsesCurrentMode() {
-        var capabilities = AppContextMenuCapabilities(
-            canUseConfiguredUninstallTool: true,
-            allowsBatchSelection: true
-        )
-
-        XCTAssertEqual(
-            tokens(for: entries(target: .app(container: .mainGrid), surface: .coreAnimationMainGrid, capabilities: capabilities)),
-            [
-                .action(.showInFinder),
-                .action(.copyPath),
-                .separator,
-                .action(.hideApp),
-                .separator,
-                .action(.startBatchSelection),
-                .separator,
-                .action(.uninstallWithConfiguredTool)
-            ]
-        )
-
-        capabilities.isBatchSelectionActive = true
-        XCTAssertTrue(
-            tokens(for: entries(target: .app(container: .mainGrid), surface: .coreAnimationMainGrid, capabilities: capabilities))
-                .contains(.action(.finishBatchSelection))
-        )
-    }
-
-    func testCAMainGridOmitsBatchSelectionWhenSearchDisablesIt() {
+    func testCAMainGridAppMenuShowsCoreActions() {
         let capabilities = AppContextMenuCapabilities(
-            canUseConfiguredUninstallTool: true,
-            allowsBatchSelection: false
+            canUseConfiguredUninstallTool: true
         )
 
         XCTAssertEqual(
@@ -181,7 +153,6 @@ final class AppContextMenuTests: XCTestCase {
         let capabilities = AppContextMenuCapabilities(
             showQuarantineRemovalAction: true,
             canUseConfiguredUninstallTool: true,
-            allowsBatchSelection: true,
             folderQuickLaunchPinningEnabled: true
         )
         let appEntries = entries(
@@ -201,7 +172,6 @@ final class AppContextMenuTests: XCTestCase {
             .removeQuarantine: (.localized(.removeQuarantineInTerminal), "terminal", .normal),
             .hideApp: (.localized(.hideApp), "eye.slash", .normal),
             .uninstallWithConfiguredTool: (.localized(.uninstallWithConfiguredTool), "trash", .destructive),
-            .startBatchSelection: (.localized(.batchSelectApps), "checklist", .normal),
             .pinToFolderQuickLaunchTop: (.localized(.pinToFolderQuickLaunchTop), "pin", .normal),
             .renameFolder: (.localized(.renameFolder), "pencil", .normal),
             .dissolveFolder: (.localized(.dissolveFolder), "folder.badge.minus", .destructive)
@@ -213,20 +183,6 @@ final class AppContextMenuTests: XCTestCase {
             XCTAssertEqual(descriptor.symbolName, metadata.1, "Unexpected symbol for \(action)")
             XCTAssertEqual(descriptor.role, metadata.2, "Unexpected role for \(action)")
         }
-
-        var activeBatchCapabilities = capabilities
-        activeBatchCapabilities.isBatchSelectionActive = true
-        let finish = try XCTUnwrap(item(
-            with: .finishBatchSelection,
-            in: entries(
-                target: .app(container: .mainGrid),
-                surface: .coreAnimationMainGrid,
-                capabilities: activeBatchCapabilities
-            )
-        ))
-        XCTAssertEqual(finish.title, .localized(.finishBatchSelection))
-        XCTAssertEqual(finish.symbolName, "checkmark.circle")
-        XCTAssertEqual(finish.role, .normal)
 
         let unpin = try XCTUnwrap(item(
             with: .unpinFromFolderQuickLaunchTop,
@@ -269,8 +225,6 @@ final class AppContextMenuTests: XCTestCase {
             (.removeQuarantine, appTarget, .removeQuarantine("Example")),
             (.hideApp, appTarget, .hideApp("Example")),
             (.uninstallWithConfiguredTool, appTarget, .uninstallWithConfiguredTool("Example")),
-            (.startBatchSelection, appTarget, .startBatchSelection),
-            (.finishBatchSelection, appTarget, .finishBatchSelection),
             (.pinToFolderQuickLaunchTop, appTarget, .pinToFolderQuickLaunchTop("Example", folderID: "folder-id")),
             (.unpinFromFolderQuickLaunchTop, appTarget, .unpinFromFolderQuickLaunchTop("Example", folderID: "folder-id")),
             (.launchFolderApp(path: "/Applications/Example.app"), folderTarget, .launchFolderApp(path: "/Applications/Example.app", folder: "Folder")),
@@ -352,14 +306,6 @@ final class AppContextMenuTests: XCTestCase {
 
         func uninstallWithConfiguredTool(_ app: String) {
             routes.append(.uninstallWithConfiguredTool(app))
-        }
-
-        func startBatchSelection() {
-            routes.append(.startBatchSelection)
-        }
-
-        func finishBatchSelection() {
-            routes.append(.finishBatchSelection)
         }
 
         func pinToFolderQuickLaunchTop(_ app: String, folderID: String) {

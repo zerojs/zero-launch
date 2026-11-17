@@ -4998,55 +4998,6 @@ final class AppStore: ObservableObject {
     }
 
     // MARK: - 跨页拖拽：级联插入（满页则将最后一个推入下一页）
-    func moveSelectedAppsAcrossPagesWithCascade(appPathsOrdered: [String], to targetIndex: Int) {
-        guard !appPathsOrdered.isEmpty else { return }
-
-        var seenPaths = Set<String>()
-        let normalizedOrderedPaths: [String] = appPathsOrdered.compactMap { raw in
-            let normalized = standardizedFilePath(raw)
-            guard seenPaths.insert(normalized).inserted else { return nil }
-            return normalized
-        }
-        guard !normalizedOrderedPaths.isEmpty else { return }
-        let movingPathSet = Set(normalizedOrderedPaths)
-
-        var movingItemsByPath: [String: LaunchpadItem] = [:]
-        for item in items {
-            guard case .app(let app) = item else { continue }
-            let path = standardizedFilePath(app.url.path)
-            if movingPathSet.contains(path), movingItemsByPath[path] == nil {
-                movingItemsByPath[path] = .app(app)
-            }
-        }
-
-        let orderedMovingItems = normalizedOrderedPaths.compactMap { movingItemsByPath[$0] }
-        guard !orderedMovingItems.isEmpty else { return }
-
-        var result = items
-        let sourceIndexes = result.indices.filter { index in
-            guard case .app(let app) = result[index] else { return false }
-            return movingPathSet.contains(standardizedFilePath(app.url.path))
-        }
-        guard !sourceIndexes.isEmpty else { return }
-
-        for index in sourceIndexes {
-            result[index] = .empty(UUID().uuidString)
-        }
-
-        result = compactedItemsWithinPages(result)
-        var insertionIndex = max(0, min(targetIndex, result.count))
-
-        for movingItem in orderedMovingItems {
-            result = cascadeInsert(into: result, item: movingItem, at: insertionIndex)
-            insertionIndex += 1
-        }
-
-        items = filteredItemsRemovingHidden(from: result)
-        compactItemsWithinPages()
-        removeEmptyPages()
-        triggerGridRefresh()
-        saveAllOrder()
-    }
 
     func moveItemAcrossPagesWithCascade(item: LaunchpadItem, to targetIndex: Int) {
         guard items.indices.contains(targetIndex) || targetIndex == items.count else {

@@ -20,8 +20,6 @@ public enum AppContextMenuAction: Hashable {
     case removeQuarantine
     case hideApp
     case uninstallWithConfiguredTool
-    case startBatchSelection
-    case finishBatchSelection
     case pinToFolderQuickLaunchTop
     case unpinFromFolderQuickLaunchTop
     case launchFolderApp(path: String)
@@ -35,8 +33,6 @@ public enum AppContextMenuTitleKey: Equatable {
     case removeQuarantineInTerminal
     case hideApp
     case uninstallWithConfiguredTool
-    case batchSelectApps
-    case finishBatchSelection
     case pinToFolderQuickLaunchTop
     case unpinFromFolderQuickLaunchTop
     case renameFolder
@@ -102,8 +98,6 @@ public struct AppContextMenuQuickLaunchApp: Equatable {
 public struct AppContextMenuCapabilities: Equatable {
     public var showQuarantineRemovalAction: Bool
     public var canUseConfiguredUninstallTool: Bool
-    public var allowsBatchSelection: Bool
-    public var isBatchSelectionActive: Bool
     public var folderQuickLaunchEnabled: Bool
     public var folderQuickLaunchPinningEnabled: Bool
     public var quickLaunchApps: [AppContextMenuQuickLaunchApp]
@@ -111,16 +105,12 @@ public struct AppContextMenuCapabilities: Equatable {
     public init(
         showQuarantineRemovalAction: Bool = false,
         canUseConfiguredUninstallTool: Bool = false,
-        allowsBatchSelection: Bool = false,
-        isBatchSelectionActive: Bool = false,
         folderQuickLaunchEnabled: Bool = false,
         folderQuickLaunchPinningEnabled: Bool = false,
         quickLaunchApps: [AppContextMenuQuickLaunchApp] = []
     ) {
         self.showQuarantineRemovalAction = showQuarantineRemovalAction
         self.canUseConfiguredUninstallTool = canUseConfiguredUninstallTool
-        self.allowsBatchSelection = allowsBatchSelection
-        self.isBatchSelectionActive = isBatchSelectionActive
         self.folderQuickLaunchEnabled = folderQuickLaunchEnabled
         self.folderQuickLaunchPinningEnabled = folderQuickLaunchPinningEnabled
         self.quickLaunchApps = quickLaunchApps
@@ -170,15 +160,6 @@ public enum AppContextMenuBuilder {
 
         entries.append(.separator)
         entries.append(item(.hideApp, .hideApp, symbol: "eye.slash"))
-
-        if surface == .coreAnimationMainGrid, capabilities.allowsBatchSelection {
-            entries.append(.separator)
-            entries.append(
-                capabilities.isBatchSelectionActive
-                    ? item(.finishBatchSelection, .finishBatchSelection, symbol: "checkmark.circle")
-                    : item(.startBatchSelection, .batchSelectApps, symbol: "checklist")
-            )
-        }
 
         if capabilities.canUseConfiguredUninstallTool {
             entries.append(.separator)
@@ -281,8 +262,6 @@ public enum AppContextMenuRoute<App, Folder> {
     case removeQuarantine(App)
     case hideApp(App)
     case uninstallWithConfiguredTool(App)
-    case startBatchSelection
-    case finishBatchSelection
     case pinToFolderQuickLaunchTop(App, folderID: String)
     case unpinFromFolderQuickLaunchTop(App, folderID: String)
     case launchFolderApp(path: String, folder: Folder)
@@ -302,8 +281,6 @@ public protocol AppContextMenuRouteHandling: AnyObject {
     func removeQuarantine(_ app: App)
     func hideApp(_ app: App)
     func uninstallWithConfiguredTool(_ app: App)
-    func startBatchSelection()
-    func finishBatchSelection()
     func pinToFolderQuickLaunchTop(_ app: App, folderID: String)
     func unpinFromFolderQuickLaunchTop(_ app: App, folderID: String)
     func launchFolderApp(path: String, folder: Folder)
@@ -327,10 +304,6 @@ public enum AppContextMenuRouter {
             return .hideApp(app)
         case (.uninstallWithConfiguredTool, .app(let app, _)):
             return .uninstallWithConfiguredTool(app)
-        case (.startBatchSelection, .app):
-            return .startBatchSelection
-        case (.finishBatchSelection, .app):
-            return .finishBatchSelection
         case (.pinToFolderQuickLaunchTop, .app(let app, let folderID)):
             guard let folderID else { return nil }
             return .pinToFolderQuickLaunchTop(app, folderID: folderID)
@@ -376,10 +349,6 @@ public enum AppContextMenuRouter {
             handler.hideApp(app)
         case .uninstallWithConfiguredTool(let app):
             handler.uninstallWithConfiguredTool(app)
-        case .startBatchSelection:
-            handler.startBatchSelection()
-        case .finishBatchSelection:
-            handler.finishBatchSelection()
         case .pinToFolderQuickLaunchTop(let app, let folderID):
             handler.pinToFolderQuickLaunchTop(app, folderID: folderID)
         case .unpinFromFolderQuickLaunchTop(let app, let folderID):

@@ -64,9 +64,7 @@ struct CAGridViewRepresentable: NSViewRepresentable {
         view.dockDragEnabled = appStore.dockDragEnabled
         view.dockDragSide = appStore.dockDragSide
         view.externalAppDragTriggerDistance = CGFloat(appStore.dockDragTriggerDistance)
-        let allowsBatchSelection = appStore.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        view.contextMenuConfiguration = makeContextMenuConfiguration(allowsBatchSelection: allowsBatchSelection)
-        view.allowsBatchSelectionMode = allowsBatchSelection
+        view.contextMenuConfiguration = makeContextMenuConfiguration()
         
         // Set current page BEFORE items to ensure correct initial position
         view.setInitialPage(appStore.currentPage)
@@ -197,12 +195,6 @@ struct CAGridViewRepresentable: NSViewRepresentable {
             }
         }
 
-        view.onReorderAppBatch = { appPathsOrdered, toIndex in
-            DispatchQueue.main.async {
-                appStore.moveSelectedAppsAcrossPagesWithCascade(appPathsOrdered: appPathsOrdered, to: toIndex)
-            }
-        }
-
         // 请求创建新页面（拖拽到右边缘时）
         // 由 AppStore 统一把关:一次拖拽会话最多只开一张空白页
         view.onRequestNewPage = {
@@ -296,9 +288,7 @@ struct CAGridViewRepresentable: NSViewRepresentable {
         nsView.isScrollEnabled = appStore.openFolder == nil && !appStore.isSetting
         // 长按卸载的抖动模式状态由 AppStore 下发(视图内 didSet 负责套动画与徽标)
         nsView.isJiggleMode = appStore.isUninstallJiggleMode
-        let allowsBatchSelection = appStore.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        nsView.contextMenuConfiguration = makeContextMenuConfiguration(allowsBatchSelection: allowsBatchSelection)
-        nsView.allowsBatchSelectionMode = allowsBatchSelection
+        nsView.contextMenuConfiguration = makeContextMenuConfiguration()
 
         // 检查刷新触发器是否变化（文件夹创建/修改会触发）
         let triggerChanged = context.coordinator.lastGridRefreshTrigger != gridRefreshTrigger ||
@@ -363,13 +353,12 @@ struct CAGridViewRepresentable: NSViewRepresentable {
         Coordinator()
     }
 
-    private func makeContextMenuConfiguration(allowsBatchSelection: Bool) -> AppContextMenuConfiguration {
+    private func makeContextMenuConfiguration() -> AppContextMenuConfiguration {
         let store = appStore
         return AppContextMenuConfiguration(
             localize: { [weak store] key in store?.localized(key.localizationKey) ?? key.localizationKey.rawValue },
             showQuarantineRemovalAction: appStore.showQuarantineRemovalAction,
             canUseConfiguredUninstallTool: appStore.uninstallToolAppURL != nil,
-            allowsBatchSelection: allowsBatchSelection,
             folderQuickLaunchEnabled: appStore.folderQuickLaunchEnabled,
             orderedFolderQuickLaunchApps: { [weak store] folder in
                 store?.orderedFolderQuickLaunchApps(in: folder) ?? folder.apps

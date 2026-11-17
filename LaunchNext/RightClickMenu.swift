@@ -214,8 +214,7 @@ extension CAGridView {
 
         let capabilities = contextMenuConfiguration.capabilities(
             for: target,
-            folder: folder,
-            isBatchSelectionActive: isBatchSelectionMode
+            folder: folder
         )
         let entries = AppContextMenuBuilder.entries(
             for: target,
@@ -234,16 +233,7 @@ extension CAGridView {
     @objc private func handleContextMenuAction(_ sender: NSMenuItem) {
         guard let invocation = sender.representedObject as? AppContextMenuInvocationBox,
               let route = invocation.invocation.route else { return }
-        switch route {
-        case .startBatchSelection:
-            enableBatchSelectionMode()
-        case .finishBatchSelection:
-            disableBatchSelectionMode()
-        default:
-            if let onContextMenuAction {
-                onContextMenuAction(route)
-            }
-        }
+        onContextMenuAction?(route)
     }
 }
 

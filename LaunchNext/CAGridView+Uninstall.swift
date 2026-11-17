@@ -8,7 +8,6 @@ import QuartzCore
 //   → 点击「×」弹确认框 → 确认后移到废纸篓并从网格移除
 //   → 点击空白处 / Esc 退出。
 //
-// 与批量选择模式的差异:批量选择会把勾选框放在图标右上角并改点击语义,
 // 抖动模式只增加一个左上角徽标,点击其余区域仍按普通点击处理(但不启动应用)。
 
 extension CAGridView {
@@ -122,8 +121,8 @@ extension CAGridView {
         guard !isJiggleMode else { return }
         guard case .app = item else { return }
         guard pressedIndex == index, !isDraggingItem else { return }
-        // 批量选择与右键菜单跟踪期间不抢长按
-        guard !isBatchSelectionMode, !isContextMenuTracking else { return }
+        // 右键菜单跟踪期间不抢长按
+        guard !isContextMenuTracking else { return }
 
         // 这里**不能**清 pressedIndex。
         // mouseDragged 是靠 "if !isDraggingItem, let idx = pressedIndex" 判断是否起拖的,

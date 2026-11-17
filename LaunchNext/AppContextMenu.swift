@@ -18,10 +18,6 @@ extension AppContextMenuTitleKey {
             return .hiddenAppsAddButton
         case .uninstallWithConfiguredTool:
             return .contextMenuUninstallWithConfiguredTool
-        case .batchSelectApps:
-            return .contextMenuBatchSelectApps
-        case .finishBatchSelection:
-            return .contextMenuFinishBatchSelection
         case .pinToFolderQuickLaunchTop:
             return .contextMenuPinToFolderQuickLaunchTop
         case .unpinFromFolderQuickLaunchTop:
@@ -38,7 +34,6 @@ struct AppContextMenuConfiguration {
     var localize: (AppContextMenuTitleKey) -> String = { $0.localizationKey.rawValue }
     var showQuarantineRemovalAction = false
     var canUseConfiguredUninstallTool = false
-    var allowsBatchSelection = false
     var folderQuickLaunchEnabled = false
     var folderQuickLaunchPinningEnabled = false
     var orderedFolderQuickLaunchApps: (FolderInfo) -> [AppInfo] = { $0.apps }
@@ -49,14 +44,11 @@ struct AppContextMenuConfiguration {
 
     func capabilities(
         for target: AppContextMenuTarget,
-        folder: FolderInfo? = nil,
-        isBatchSelectionActive: Bool = false
+        folder: FolderInfo? = nil
     ) -> AppContextMenuCapabilities {
         var capabilities = AppContextMenuCapabilities(
             showQuarantineRemovalAction: showQuarantineRemovalAction,
             canUseConfiguredUninstallTool: canUseConfiguredUninstallTool,
-            allowsBatchSelection: allowsBatchSelection,
-            isBatchSelectionActive: isBatchSelectionActive,
             folderQuickLaunchEnabled: folderQuickLaunchEnabled,
             folderQuickLaunchPinningEnabled: folderQuickLaunchPinningEnabled
         )
@@ -111,14 +103,6 @@ private final class LaunchNextContextMenuRouteHandler: AppContextMenuRouteHandli
 
     func uninstallWithConfiguredTool(_ app: AppInfo) {
         if !appStore.openConfiguredUninstallTool(for: app) { NSSound.beep() }
-    }
-
-    func startBatchSelection() {
-        assertionFailure("Batch-selection routes must be handled by CAGridView")
-    }
-
-    func finishBatchSelection() {
-        assertionFailure("Batch-selection routes must be handled by CAGridView")
     }
 
     func pinToFolderQuickLaunchTop(_ app: AppInfo, folderID: String) {
