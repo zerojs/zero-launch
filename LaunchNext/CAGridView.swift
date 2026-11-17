@@ -41,10 +41,21 @@ final class CAGridView: NSView, CALayerDelegate, NSDraggingSource {
     var containerLayer: CALayer!
     var pageContainerLayer: CALayer!
     var iconLayers: [[CALayer]] = []  // [page][item]
+    /// 当前这棵 layer 树是按「每页多少格」建出来的。
+    /// 列/行数变化后 itemsPerPage 跟着变，但 iconLayers 里每个 page 的槽位数
+    /// 还是旧的；差量更新必须知道这件事，否则会按新槽位去索引旧层，
+    /// 把 A 应用的层当成 B 应用复用。
+    var layersItemsPerPage: Int = 0
+
+    /// 配置是成批下发的（columns / rows / labelFontSize 一起改）。
+    /// 每个都能触发一次全量重建，拖动步进器时会连闪好几下、图标也重复加载，
+    /// 所以先挂起，等一批写完由 flushPendingLayerRebuild() 统一重建一次。
+    var suppressLayerRebuild = false
+    var pendingLayerRebuild = false
 
     // 网格配置
-    var columns: Int = 7 { didSet { rebuildLayers() } }
-    var rows: Int = 5 { didSet { rebuildLayers() } }
+    var columns: Int = 7 { didSet { guard columns != oldValue else { return }; scheduleLayerRebuild() } }
+    var rows: Int = 5 { didSet { guard rows != oldValue else { return }; scheduleLayerRebuild() } }
     var iconSize: CGFloat = 72 {
         didSet {
             guard iconSize != oldValue else { return }
@@ -54,7 +65,7 @@ final class CAGridView: NSView, CALayerDelegate, NSDraggingSource {
     }
     var columnSpacing: CGFloat = 24 { didSet { updateLayout() } }
     var rowSpacing: CGFloat = 36 { didSet { updateLayout() } }
-    var labelFontSize: CGFloat = 12 { didSet { rebuildLayers() } }  // 默认 12pt，比原来大一点
+    var labelFontSize: CGFloat = 12 { didSet { guard labelFontSize != oldValue else { return }; scheduleLayerRebuild() } }  // 默认 12pt，比原来大一点
     var labelFontWeight: NSFont.Weight = .medium { didSet { updateLabelFonts() } }
     var labelColorHex: String? { didSet { updateLabelColors() } }   // nil/无法解析时跟随系统深浅色
     var showLabels: Bool = true { didSet { updateLabelVisibility() } }

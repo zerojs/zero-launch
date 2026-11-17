@@ -259,6 +259,10 @@ struct CAGridViewRepresentable: NSViewRepresentable {
                             nsView.folderPreviewScale != (appStore.enableHighResFolderPreviews ? nsViewScale(for: nsView) : 1)
 
         if configChanged {
+            // columns / rows / labelFontSize 各自都会触发起一次全量层重建。
+            // 三个一起改时先挂起，写完再统一重建一次，避免连闪三下、
+            // 图标缓存也被重复清空三次。
+            nsView.suppressLayerRebuild = true
             nsView.columns = appStore.gridColumnsPerPage
             nsView.rows = appStore.gridRowsPerPage
             nsView.iconSize = iconSize
@@ -274,6 +278,8 @@ struct CAGridViewRepresentable: NSViewRepresentable {
             nsView.folderDropZoneScale = CGFloat(appStore.folderDropZoneScale)
             let preferredScale = nsViewScale(for: nsView)
             nsView.folderPreviewScale = appStore.enableHighResFolderPreviews ? preferredScale : 1
+            nsView.suppressLayerRebuild = false
+            nsView.flushPendingLayerRebuild()
         }
         nsView.enableIconPreload = false
         nsView.scrollSensitivity = appStore.scrollSensitivity

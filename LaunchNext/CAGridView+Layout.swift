@@ -4,6 +4,22 @@ import QuartzCore
 extension CAGridView {
     // MARK: - Layer Management
 
+    /// 配置变更引起的层重建入口：批量下发期间只记一个「待重建」标记。
+    func scheduleLayerRebuild() {
+        guard !suppressLayerRebuild else {
+            pendingLayerRebuild = true
+            return
+        }
+        rebuildLayers()
+    }
+
+    /// 批量配置写完后调用一次，把挂起的重建合并成一次。
+    func flushPendingLayerRebuild() {
+        guard pendingLayerRebuild else { return }
+        pendingLayerRebuild = false
+        rebuildLayers()
+    }
+
     /// 槽位身份 key：相同 key 的槽位可复用既有 CALayer。
     /// 包含显示名与文件夹成员路径，保证标签/内容变化时该槽位会被替换刷新。
     private func itemIdentityKey(_ item: LaunchpadItem) -> String {
@@ -25,8 +41,14 @@ extension CAGridView {
     /// 避免每次 items 赋值（拖拽、搜索过滤、刷新）都销毁并重建整棵 layer 树。
     func reconcileLayers(previous: [LaunchpadItem]) {
         let ipp = max(itemsPerPage, 1)
-        let previousPageCount = max(1, (previous.count + ipp - 1) / ipp)
-        guard !iconLayers.isEmpty, pageCount == previousPageCount else {
+        // 列/行数一变，每页槽位数就变了，而 iconLayers 里每页的槽位数还是旧的，
+        // 槽位语义对不上 —— 必须全量重建。
+        // 以前这里用「新的 ipp」去算旧 items 的页数（previousPageCount），
+        // 然后和新的 pageCount 比：两个数字只要碰巧相等就会走进差量路径，
+        // 按新槽位索引旧层，把 A 应用的层当成 B 应用复用。
+        guard !iconLayers.isEmpty,
+              layersItemsPerPage == ipp,
+              pageCount == iconLayers.count else {
             rebuildLayers()
             return
         }
@@ -45,7 +67,12 @@ extension CAGridView {
             var pageLayers: [CALayer] = []
             pageLayers.reserveCapacity(ipp)
             for slot in 0..<ipp {
-                guard idx < items.count else { break pageLoop }
+                // 只跳出内层。这里以前是 `break pageLoop`，会连带跳过下面那行
+                // newPageLayers.append —— 整页的层虽然还挂在 pageContainerLayer 上，
+                // 却不再被 iconLayers 记录，从此再也不会被清理：它们停在旧的
+                // 位置和旧的尺寸上，下次重建又在上面叠一层新层，
+                // 于是出现「两套尺寸的图标同时铺满屏幕」。
+                guard idx < items.count else { break }
                 let item = items[idx]
                 let oldIndex = pageIndex * ipp + slot
                 let oldLayer = (oldIndex < previous.count && pageIndex < iconLayers.count && slot < iconLayers[pageIndex].count)
@@ -66,6 +93,7 @@ extension CAGridView {
                 idx += 1
             }
             newPageLayers.append(pageLayers)
+            if idx >= items.count { break pageLoop }
         }
 
         if !anyReplaced && newPageLayers.count == iconLayers.count {
@@ -80,6 +108,7 @@ extension CAGridView {
             }
         }
         iconLayers = newPageLayers
+        layersItemsPerPage = ipp
 
         if bounds.width > 0 && bounds.height > 0 {
             updateLayout()
@@ -98,6 +127,12 @@ extension CAGridView {
             }
         }
         iconLayers.removeAll()
+        // 兜底：pageContainerLayer 上只挂图标容器层，不会有别的东西。
+        // 按 iconLayers 逐层移除只能清「记录在案」的层；一旦历史上出现过
+        // 层已上屏但没进 iconLayers 的情况，这里能把残留的幽灵层一并扫掉，
+        // 而不是让它们在每次重建后又叠一层。
+        pageContainerLayer.sublayers?.forEach { $0.removeFromSuperlayer() }
+        layersItemsPerPage = max(itemsPerPage, 1)
 
         guard !items.isEmpty else {
             CATransaction.commit()

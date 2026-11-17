@@ -116,6 +116,9 @@ struct LaunchpadView: View {
     @State private var windowObserver: NSObjectProtocol?
     @State private var windowHiddenObserver: NSObjectProtocol?
     @State private var draggingItem: LaunchpadItem?
+    /// SwiftUI 网格下边缘翻页提示条的朝向：-1 左 / 1 右 / 0 收起。
+    /// CA 渲染器由 CAGridView 自己维护，这里只服务轻量模式。
+    @State private var dragEdgeHintSide: Int = 0
     @State private var dragPreviewPosition: CGPoint = .zero
     @State private var dragPreviewScale: CGFloat = 1.2
     @State private var pendingDropIndex: Int? = nil
@@ -133,7 +136,6 @@ struct LaunchpadView: View {
     @State private var gridOriginInWindow: CGPoint = .zero
     @State private var currentContainerSize: CGSize = .zero
     @State private var overlayWindowSize: CGSize = .zero
-    @State private var isSettingsButtonHovering: Bool = false
     @State private var currentColumnWidth: CGFloat = 0
     @State private var currentAppHeight: CGFloat = 0
     @State private var currentIconSize: CGFloat = 0
@@ -556,6 +558,13 @@ struct LaunchpadView: View {
         let actualTopPadding = config.isFullscreen ? geo.size.height * config.topPadding : 0
         let actualBottomPadding = config.isFullscreen ? geo.size.height * config.bottomPadding : 0
         let actualHorizontalPadding = config.isFullscreen ? geo.size.width * config.horizontalPadding : 0
+        // 顶部工具区（搜索框 + 右上角按钮）沿用网格的左右留白，而不是系统的
+        // 默认 .padding(.horizontal)（约 16pt）—— 两者各留各的，右侧就会差一截。
+        //
+        // 只对齐「网格内容边缘」即可，不要再加 (列宽 - 图标宽)/2：
+        // CA 渲染器给每个 app 的 item 宽度基本贴着图标，图标并不是在整列宽度里
+        // 居中留出大把空隙，加了那半格反而会把按钮往左推一截（实测偏左约 20pt）。
+        let headerHorizontalInset = max(actualHorizontalPadding, 24)
         let indicatorTopPadding = appStore.effectivePageIndicatorTopPadding(for: currentScreenID)
         let indicatorOffset = appStore.effectivePageIndicatorOffset(for: currentScreenID)
 
@@ -605,42 +614,30 @@ struct LaunchpadView: View {
                 .focused($isSearchFieldFocused)
                 .frame(maxWidth: .infinity)
 
-                HStack(spacing: 8) {
+                // 两个按钮的悬停底衬会向外扩 6pt（见 HeaderToolbarButton），
+                // spacing 只有 8 时两块高亮会叠在一起，看着像连成一条；
+                // 20 能在两个 32pt 图标之间留出约 8pt 的实际空隙。
+                HStack(spacing: 20) {
                     Spacer()
                     if appStore.showQuickRefreshButton {
-                        Button {
+                        HeaderToolbarButton(
+                            systemImage: "arrow.clockwise.circle",
+                            tint: pageIndicatorAccentColor
+                        ) {
                             appStore.refresh()
-                        } label: {
-                            Image(systemName: "arrow.clockwise.circle")
-                                .font(.title)
-                                .foregroundStyle(pageIndicatorAccentColor.opacity(0.6))
                         }
-                        .buttonStyle(.plain)
                         .help(appStore.localized(.refresh))
                     }
-                    Button {
+                    HeaderToolbarButton(
+                        systemImage: "ellipsis.circle",
+                        tint: pageIndicatorAccentColor
+                    ) {
                         appStore.isSetting = true
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                            .font(.system(size: 32))
-                            .foregroundStyle(pageIndicatorAccentColor.opacity(isSettingsButtonHovering ? 1.0 : 0.6))
-                            .scaleEffect(isSettingsButtonHovering ? 1.12 : 1.0)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(Color.primary.opacity(isSettingsButtonHovering ? 0.08 : 0))
-                                    .padding(-6)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .onHover { hovering in
-                        withAnimation(.easeOut(duration: 0.12)) {
-                            isSettingsButtonHovering = hovering
-                        }
                     }
                 }
             }
             .padding(.top)
-            .padding(.horizontal)
+            .padding(.horizontal, headerHorizontalInset)
             .background(
                 ZStack {
                     // Search and toolbar controls remain above this catcher, so
@@ -1077,13 +1074,31 @@ struct LaunchpadView: View {
                     DragPreviewItem(item: draggingItem,
                                     iconSize: iconSize,
                                     labelWidth: columnWidth * 0.9,
-                                    scale: dragPreviewScale)
+                                    scale: dragPreviewScale,
+                                    // 与 CA 渲染器保持一致：拖拽时只跟一个悬浮图标，
+                                    // 不带文件名。之前这里漏了这个参数，默认 true，
+                                    // 于是「轻量模式」下拖拽又冒出名字来。
+                                    showsLabel: false)
                         .position(x: dragPreviewPosition.x, y: dragPreviewPosition.y)
                         .zIndex(100)
                         .allowsHitTesting(false)
                 }
+
+                // 边缘翻页提示条。CA 渲染器把它画在自己的 layer 上，
+                // SwiftUI 网格没有宿主 layer，所以这里单独桥一层。
+                EdgeHintOverlay(side: dragEdgeHintSide)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .zIndex(50)
+                    .allowsHitTesting(false)
             }
             .coordinateSpace(name: "grid")
+            // 兜底：任何一条路径把 draggingItem 清掉（手势结束、接力拖拽取消、
+            // 键盘 Esc 等）都要让提示条熄灭，否则会有一根条子留在屏幕上。
+            .onChange(of: draggingItem == nil) { _, isIdle in
+                if isIdle, dragEdgeHintSide != 0 {
+                    dragEdgeHintSide = 0
+                }
+            }
             // 让整个网格容器都可命中，以捕获空白区域的点击
             .contentShape(Rectangle())
             .simultaneousGesture(blankDragGesture(geoSize: geo.size,
@@ -2518,7 +2533,11 @@ extension LaunchpadView {
                             }
                             .onEnded { _ in
                                 guard draggingItem != nil else { return }
-                                
+
+                                // 提示条随拖拽一起收起，不要等到 0.22s 后
+                                // 清 draggingItem 时才熄灭。
+                                dragEdgeHintSide = 0
+
                                 // 使用统一的拖拽结束处理逻辑
                                 finalizeDragOperation(containerSize: containerSize, columnWidth: columnWidth, appHeight: appHeight, iconSize: iconSize)
 
@@ -3521,6 +3540,22 @@ extension LaunchpadView {
             clearHoveringState()
         }
 
+        // 边缘翻页提示条：判定边距与 flipPageIfNeeded 完全一致，
+        // 保证「条子亮起」和「真的会翻页」是同一个边界条件。
+        // 左边缘只有还能往前翻时才提示；右边缘总是可以新建页面，所以总能提示。
+        let hintMargin: CGFloat = config.pageNavigation.edgeFlipMargin
+        let newHintSide: Int
+        if iconCenter.x <= hintMargin, appStore.currentPage > 0 {
+            newHintSide = -1
+        } else if iconCenter.x >= containerSize.width - hintMargin {
+            newHintSide = 1
+        } else {
+            newHintSide = 0
+        }
+        if dragEdgeHintSide != newHintSide {
+            dragEdgeHintSide = newHintSide
+        }
+
         if flipPageIfNeeded(iconCenter: iconCenter,
                             pointer: point,
                             iconSize: iconSize,
@@ -3676,5 +3711,46 @@ extension LaunchpadView {
         }
         
         return result
+    }
+}
+
+// MARK: - 右上角工具按钮
+
+/// 启动台右上角的圆形工具按钮（刷新 / 设置）。
+///
+/// 抽成组件是因为之前两个按钮各写一份，尺寸各说各话：设置写死 32pt，
+/// 刷新用 `.font(.title)`（约 21pt），并排放着肉眼就能看出一个大一个小。
+/// 现在两者共用同一份字号、hover 反馈与命中区域，以后调尺寸也只改一处。
+struct HeaderToolbarButton: View {
+    static let iconSize: CGFloat = 32
+
+    let systemImage: String
+    /// 两个按钮都跟随页面指示器配色，全屏/紧凑模式下自动换成对应的强调色。
+    let tint: Color
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: Self.iconSize))
+                .foregroundStyle(tint.opacity(isHovering ? 1.0 : 0.6))
+                .scaleEffect(isHovering ? 1.12 : 1.0)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.primary.opacity(isHovering ? 0.08 : 0))
+                        .padding(-6)
+                )
+                // hover 背景用负 padding 画到了 frame 之外，如果不显式铺 contentShape，
+                // 命中区域只按图标的布局尺寸算，视觉上亮起来了但边缘点不到。
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) {
+                isHovering = hovering
+            }
+        }
     }
 }

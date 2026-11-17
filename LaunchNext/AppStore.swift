@@ -385,6 +385,8 @@ final class AppStore: ObservableObject {
     static let trackpadVerticalDirectionKey = "trackpadVerticalDirection"
     static let hideMenuBarKey = "hideMenuBar"
     static let useCAGridRendererKey = "useCAGridRenderer"
+    /// 「完整」性能模式临时把 CA 网格关掉时，用它记住这是模式所致而非用户选择。
+    static let caGridSuspendedByFullModeKey = "caGridSuspendedByFullMode"
     static let folderLayoutModeKey = "folderLayoutMode"
     static let windowOpenAnimationKey = "windowOpenAnimationEnabled"
     static let windowAnimationDurationKey = "windowAnimationDuration"
@@ -1790,7 +1792,18 @@ final class AppStore: ObservableObject {
             guard oldValue != performanceMode else { return }
             PerformanceMode.persist(performanceMode)
             if performanceMode == .full, useCAGridRenderer {
+                // 「完整」模式下 CA 渲染必须关掉，但这是模式施加的限制，
+                // 不是用户的选择。先把意图记下来，切回「轻量」时再还回去。
+                // 以前这里直接把 useCAGridRenderer = false 写进磁盘，
+                // 用户一旦来回切过模式，CA 网格就再也回不来 ——
+                // 而拖拽优化（预览不带文件名、边缘翻页提示条）只在 CA 网格里有，
+                // 表现就是「这些优化莫名其妙不见了」。
+                UserDefaults.standard.set(true, forKey: Self.caGridSuspendedByFullModeKey)
                 useCAGridRenderer = false
+            } else if performanceMode == .lean,
+                      UserDefaults.standard.bool(forKey: Self.caGridSuspendedByFullModeKey) {
+                UserDefaults.standard.set(false, forKey: Self.caGridSuspendedByFullModeKey)
+                useCAGridRenderer = true
             }
         }
     }
@@ -4948,7 +4961,53 @@ final class AppStore: ObservableObject {
         triggerFolderUpdate()
         triggerGridRefresh()
     }
-    
+
+    // MARK: - 分区级「恢复本页默认」
+
+    // 下面几个方法统一直接给属性赋默认值，而不是走 resetAppearanceSettings 那种
+    // 「先删 UserDefaults key 再重载」的路子。原因是这些属性都有 didSet 负责回写，
+    // 赋值本身就同步了内存与磁盘，界面也能立刻回到默认态；
+    // 而删 key 只是把磁盘抹掉，本会话里界面还停在旧值上，看起来像没生效。
+
+    /// 声音页：开关与三个提示音一起回到默认。
+    func resetSoundSettings() {
+        soundEffectsEnabled = false
+        soundLaunchpadOpenSound = Self.defaultLaunchpadOpenSound
+        soundLaunchpadCloseSound = Self.defaultLaunchpadCloseSound
+        soundNavigationSound = Self.defaultNavigationSound
+        voiceFeedbackEnabled = false
+    }
+
+    /// 快捷键页：全局快捷键、Dock 拖拽、触发角与手势全部回到全新安装时的状态。
+    /// 全局快捷键在全新安装下是「未设置」，所以这里清空，而不是写回某个组合键。
+    func resetShortcutSettings() {
+        clearGlobalHotKey()
+
+        dockDragEnabled = true
+        dockDragSide = .bottom
+        dockDragTriggerDistance = Self.defaultDockDragTriggerDistance
+
+        hotCornerEnabled = false
+        hotCornerPosition = .topLeft
+        hotCornerTriggerDelay = Self.defaultHotCornerTriggerDelay
+        hotCornerHitboxSize = Self.defaultHotCornerHitboxSize
+        hotCornerToggleWhenOpen = false
+
+        gestureEnabled = false
+        gestureCloseOnPinchOut = false
+        gestureTapAction = .off
+        gestureFingerCount = .four
+        gestureDeviceSelectionMode = .automatic
+        gestureSelectedDeviceIDs = []
+        gestureShowAllInputDevices = false
+    }
+
+    /// 游戏控制器页：关闭接管，并把「菜单键切换启动台」恢复为默认开启。
+    func resetGameControllerSettings() {
+        gameControllerEnabled = false
+        gameControllerMenuTogglesLaunchpad = true
+    }
+
     /// 单页内自动补位：将每页的 .empty 槽位移动到该页尾部，保持非空项的相对顺序
     func compactItemsWithinPages() {
         guard !items.isEmpty else { return }
