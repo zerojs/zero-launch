@@ -16,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "0D1B0B3F2E4CDE460083EEF9"
-               BuildableName = "LaunchNext.app"
+               BuildableName = "ZeroLaunch.app"
                BlueprintName = "LaunchNext"
                ReferencedContainer = "container:LaunchNext.xcodeproj">
             </BuildableReference>
@@ -72,7 +72,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "0D1B0B3F2E4CDE460083EEF9"
-            BuildableName = "LaunchNext.app"
+            BuildableName = "ZeroLaunch.app"
             BlueprintName = "LaunchNext"
             ReferencedContainer = "container:LaunchNext.xcodeproj">
          </BuildableReference>
@@ -89,7 +89,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "0D1B0B3F2E4CDE460083EEF9"
-            BuildableName = "LaunchNext.app"
+            BuildableName = "ZeroLaunch.app"
             BlueprintName = "LaunchNext"
             ReferencedContainer = "container:LaunchNext.xcodeproj">
          </BuildableReference>

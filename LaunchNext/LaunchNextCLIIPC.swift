@@ -52,8 +52,8 @@ enum LaunchNextCLIIPCClient {
 
         guard connectSocket(fd: fd, socketPath: socketPath) else {
             return .failure(
-                "Please launch LaunchNext GUI first.\n" +
-                "Run: open -a LaunchNext\n" +
+                "Please launch ZeroLaunch GUI first.\n" +
+                "Run: open -a ZeroLaunch\n" +
                 "Make sure \"Command line interface\" is ON in General settings."
             )
         }

@@ -994,7 +994,8 @@ struct LaunchpadView: View {
                         DragPreviewItem(item: draggingItem,
                                         iconSize: iconSize,
                                         labelWidth: columnWidth * 0.9,
-                                        scale: dragPreviewScale)
+                                        scale: dragPreviewScale,
+                                        showsLabel: false)
                             .position(x: dragPreviewPosition.x, y: dragPreviewPosition.y)
                             .zIndex(100)
                             .allowsHitTesting(false)
@@ -3146,6 +3147,11 @@ struct DragPreviewItem: View {
     let iconSize: CGFloat
     let labelWidth: CGFloat
     var scale: CGFloat = 1.2
+    /// 是否在预览里带文件名。
+    /// CA 渲染器自己的拖拽层只画图标(不带名字),而从文件夹拖出到主网格的接力拖拽
+    /// 走的是这里的 SwiftUI 预览,于是出现了"文件夹里拖出来有黑名字、主网格拖拽没有"的不一致。
+    /// 由调用方按渲染器决定,默认保留旧行为。
+    var showsLabel: Bool = true
 
     // 性能优化：使用计算属性避免状态修改
     private var displayIcon: NSImage {
@@ -3206,14 +3212,16 @@ struct DragPreviewItem: View {
                                 .padding(iconSize * 0.1)
                         }
                     }
-                Text(app.name)
-                    .font(.default)
-                    .foregroundColor(isMissing ? .secondary : .primary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(width: labelWidth)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                if showsLabel {
+                    Text(app.name)
+                        .font(.default)
+                        .foregroundColor(isMissing ? .secondary : .primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(width: labelWidth)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                }
             }
             .scaleEffect(scale)
             .animation(LNAnimations.springFast, value: scale)
@@ -3238,14 +3246,16 @@ struct DragPreviewItem: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                             .padding(iconSize * 0.1)
                     )
-                Text(placeholder.displayName)
-                    .font(.default)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(width: labelWidth)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                if showsLabel {
+                    Text(placeholder.displayName)
+                        .font(.default)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(width: labelWidth)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                }
             }
             .scaleEffect(scale)
             .animation(LNAnimations.springFast, value: scale)

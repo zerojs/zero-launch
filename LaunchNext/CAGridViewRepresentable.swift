@@ -12,6 +12,15 @@ struct CAGridViewRepresentable: NSViewRepresentable {
     var rowSpacing: CGFloat
     var contentInsets: NSEdgeInsets
     var pageSpacing: CGFloat
+
+    /// 实际生效的内边距:左右各让出一条 edgeGutterWidth,
+    /// 供拖到边缘时的翻页提示条占用,避免提示条压住最后一列图标。
+    private var effectiveContentInsets: NSEdgeInsets {
+        var insets = contentInsets
+        insets.left += CAGridView.edgeGutterWidth
+        insets.right += CAGridView.edgeGutterWidth
+        return insets
+    }
     var onOpenApp: ((AppInfo) -> Void)?
     var onOpenFolder: ((FolderInfo, CGPoint?) -> Void)?
     var externalDragSourceIndex: Int?
@@ -32,7 +41,7 @@ struct CAGridViewRepresentable: NSViewRepresentable {
         view.iconSize = iconSize
         view.columnSpacing = columnSpacing
         view.rowSpacing = rowSpacing
-        view.contentInsets = contentInsets
+        view.contentInsets = effectiveContentInsets
         view.pageSpacing = pageSpacing
         view.labelFontSize = CGFloat(appStore.iconLabelFontSize)
         view.labelFontWeight = nsFontWeight(for: appStore.iconLabelFontWeight)
@@ -195,14 +204,17 @@ struct CAGridViewRepresentable: NSViewRepresentable {
         }
 
         // 请求创建新页面（拖拽到右边缘时）
+        // 由 AppStore 统一把关:一次拖拽会话最多只开一张空白页
         view.onRequestNewPage = {
             DispatchQueue.main.async {
-                let itemsPerPage = appStore.gridColumnsPerPage * appStore.gridRowsPerPage
-                let currentPageCount = (appStore.items.count + itemsPerPage - 1) / itemsPerPage
-                let neededItems = (currentPageCount + 1) * itemsPerPage - appStore.items.count
-                for _ in 0..<neededItems {
-                    appStore.items.append(.empty(UUID().uuidString))
-                }
+                appStore.requestNewPageForDragAtEdge()
+            }
+        }
+
+        // 拖拽会话结束(松手/取消):回收本次会话临时开出、没人用的空白页
+        view.onDragSessionEnded = {
+            DispatchQueue.main.async {
+                appStore.finishDragSession()
             }
         }
 
@@ -241,10 +253,10 @@ struct CAGridViewRepresentable: NSViewRepresentable {
                             nsView.iconSize != iconSize ||
                             nsView.columnSpacing != columnSpacing ||
                             nsView.rowSpacing != rowSpacing ||
-                            nsView.contentInsets.top != contentInsets.top ||
-                            nsView.contentInsets.left != contentInsets.left ||
-                            nsView.contentInsets.bottom != contentInsets.bottom ||
-                            nsView.contentInsets.right != contentInsets.right ||
+                            nsView.contentInsets.top != effectiveContentInsets.top ||
+                            nsView.contentInsets.left != effectiveContentInsets.left ||
+                            nsView.contentInsets.bottom != effectiveContentInsets.bottom ||
+                            nsView.contentInsets.right != effectiveContentInsets.right ||
                             nsView.pageSpacing != pageSpacing ||
                             nsView.labelFontSize != CGFloat(appStore.iconLabelFontSize) ||
                             nsView.labelFontWeight != nsFontWeight(for: appStore.iconLabelFontWeight) ||
@@ -260,7 +272,7 @@ struct CAGridViewRepresentable: NSViewRepresentable {
             nsView.iconSize = iconSize
             nsView.columnSpacing = columnSpacing
             nsView.rowSpacing = rowSpacing
-            nsView.contentInsets = contentInsets
+            nsView.contentInsets = effectiveContentInsets
             nsView.pageSpacing = pageSpacing
             nsView.labelFontSize = CGFloat(appStore.iconLabelFontSize)
             nsView.labelFontWeight = nsFontWeight(for: appStore.iconLabelFontWeight)

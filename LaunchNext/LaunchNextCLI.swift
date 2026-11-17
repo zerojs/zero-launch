@@ -106,7 +106,7 @@ enum LaunchNextCLI {
             case "move":
                 return runMove(commandArguments: parsed.commandArguments, context: context)
             default:
-                fputs("LaunchNext CLI: command not implemented yet.\n", stderr)
+                fputs("ZeroLaunch CLI: command not implemented yet.\n", stderr)
                 printHelp()
                 return 1
             }
@@ -115,7 +115,7 @@ enum LaunchNextCLI {
 
     static func printHelp() {
         let text = """
-        LaunchNext CLI
+        ZeroLaunch CLI
 
         Usage:
           launchnext
@@ -167,7 +167,7 @@ enum LaunchNextCLI {
             Source folder app also needs: --folder-id <id>
 
         Requirements:
-          - LaunchNext GUI must be running for list/snapshot/search/create-folder/move.
+          - ZeroLaunch GUI must be running for list/snapshot/search/create-folder/move.
           - history/help do not require GUI.
           - "Command line interface" must be ON in General settings.
           - `launchnext` (without args) enters TUI only in interactive terminal sessions.
@@ -186,7 +186,7 @@ enum LaunchNextCLI {
     @discardableResult
     private static func runTUI(context: LaunchNextCLIContext) -> Int32 {
         if isatty(STDIN_FILENO) == 0 {
-            fputs("LaunchNext TUI requires an interactive terminal.\n", stderr)
+            fputs("ZeroLaunch TUI requires an interactive terminal.\n", stderr)
             return 1
         }
         let connectivityStatus = runRemoteCommand("ping", context: context, printOutput: false)
@@ -195,7 +195,7 @@ enum LaunchNextCLI {
         }
 
         printTUIBanner()
-        print("LaunchNext TUI")
+        print("ZeroLaunch TUI")
         print("Version: \(appVersionString())")
         print("Type 'help' for commands.")
 
@@ -297,7 +297,7 @@ enum LaunchNextCLI {
     @discardableResult
     private static func runRemoteCommand(_ command: String, context: LaunchNextCLIContext, printOutput: Bool = true, arguments: [String: String] = [:]) -> Int32 {
         guard let execute = context.executeRemoteCommand else {
-            fputs("LaunchNext CLI endpoint is unavailable.\n", stderr)
+            fputs("ZeroLaunch CLI endpoint is unavailable.\n", stderr)
             return 1
         }
         switch execute(LaunchNextCLIRequest(command: command, arguments: arguments)) {

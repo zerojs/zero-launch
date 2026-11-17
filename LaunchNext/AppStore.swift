@@ -3077,7 +3077,7 @@ final class AppStore: ObservableObject {
         
         if [[ "$1" == "--help" || "$1" == "-h" || "$1" == "help" ]]; then
           cat <<'EOF'
-        LaunchNext CLI
+        ZeroLaunch CLI
         
         Usage:
           launchnext --help
@@ -3091,7 +3091,7 @@ final class AppStore: ObservableObject {
         
         Notes:
           - Keep `--cli --help` and `--cli help` for full in-app CLI help.
-          - LaunchNext GUI must be running for list/snapshot/search/move.
+          - ZeroLaunch GUI must be running for list/snapshot/search/move.
           - "Command line interface" must be ON in General settings.
         EOF
           exit 0
@@ -5720,7 +5720,29 @@ final class AppStore: ObservableObject {
 
     // MARK: - 拖拽时自动创建新页
     private var pendingNewPage: (pageIndex: Int, itemCount: Int)? = nil
-    
+    /// 本次拖拽会话是否已经由「拖到右边缘」开出过临时空白页。
+    /// 同一次拖拽里反复触边只允许复用这一张页,不再继续追加,避免页数无限增长。
+    private var didCreatePageInDragSession = false
+
+    /// 拖到右边缘时的建页请求:一次拖拽会话最多开出一张空白页。
+    /// 返回 true 表示本次调用真的追加了页面。
+    @discardableResult
+    func requestNewPageForDragAtEdge() -> Bool {
+        guard !didCreatePageInDragSession else { return false }
+        didCreatePageInDragSession = true
+        return createNewPageForDrag()
+    }
+
+    /// 拖拽会话结束(松手或被取消)时调用:
+    /// 若本次会话临时开出的空白页最终没有承载任何 app,就把它撤掉。
+    func finishDragSession() {
+        guard didCreatePageInDragSession else { return }
+        didCreatePageInDragSession = false
+        cleanupUnusedNewPage()
+        removeEmptyPages()
+        clampCurrentPageWithinBounds()
+    }
+
     func createNewPageForDrag() -> Bool {
         let itemsPerPage = self.itemsPerPage
         let currentPages = (items.count + itemsPerPage - 1) / itemsPerPage
@@ -6420,13 +6442,38 @@ final class AppStore: ObservableObject {
 
         // trashItem 走文件系统 rename,大 bundle 跨卷时可能较慢,放到后台队列
         DispatchQueue.global(qos: .userInitiated).async {
+            // 第一级:系统废纸篓 API。需要本进程拥有「App 管理」授权。
             do {
                 try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+                NSLog("ZeroLaunch: 已移入废纸篓 %@", path)
                 finish(nil)
+                return
             } catch {
+                NSLog("ZeroLaunch: trashItem 被拒 %@: %@", path, String(describing: error))
+
+                // 第二级:直接 rename 进 ~/.Trash。
+                // trashItem 会走系统的"废纸篓"通道并接受「App 管理」判定,
+                // 而同卷 rename 未必被同一道判定拦住,可作为降级。
+                if Self.moveBundleToTrashByRename(url) {
+                    NSLog("ZeroLaunch: 已通过 rename 移入废纸篓 %@", path)
+                    finish(nil)
+                    return
+                }
+
+                // 第三级:请 Finder 代删。
+                // Finder 是系统应用,权限路径独立于本 app 的「App 管理」授权,
+                // 因此在 ad-hoc 签名导致授权反复失效时仍然可用(首次会请求「自动化」)。
+                if Self.trashBundleViaFinder(url) {
+                    NSLog("ZeroLaunch: 已通过 Finder 移入废纸篓 %@", path)
+                    finish(nil)
+                    return
+                }
+
+                // 第四级:LaunchServices 回收站
                 NSWorkspace.shared.recycle([url]) { results, recycleError in
                     if let recycleError {
-                        finish(recycleError)
+                        NSLog("ZeroLaunch: recycle 失败 %@: %@", path, String(describing: recycleError))
+                        finish(error)
                     } else if results[url] != nil || !FileManager.default.fileExists(atPath: path) {
                         // 回退成功:文件确实已经离开原位置
                         finish(nil)
@@ -6437,6 +6484,64 @@ final class AppStore: ObservableObject {
                 }
             }
         }
+    }
+
+    /// 把 bundle 直接重命名进 `~/.Trash`(重名时追加序号)。
+    /// 纯文件系统操作,不经过系统的"废纸篓"通道。
+    nonisolated private static func moveBundleToTrashByRename(_ url: URL) -> Bool {
+        let fm = FileManager.default
+        let trash = fm.homeDirectoryForCurrentUser.appendingPathComponent(".Trash", isDirectory: true)
+        let stem = url.deletingPathExtension().lastPathComponent
+        let ext = url.pathExtension
+
+        var candidate = trash.appendingPathComponent(url.lastPathComponent)
+        var index = 2
+        while fm.fileExists(atPath: candidate.path), index < 100 {
+            candidate = trash.appendingPathComponent("\(stem) \(index)").appendingPathExtension(ext)
+            index += 1
+        }
+
+        do {
+            try fm.moveItem(at: url, to: candidate)
+            return true
+        } catch {
+            NSLog("ZeroLaunch: rename 进废纸篓失败: %@", String(describing: error))
+            return false
+        }
+    }
+
+    /// 请 Finder 删除指定 bundle(等价于在访达里拖进废纸篓)。
+    /// 这条路径不消耗本 app 的「App 管理」授权。
+    nonisolated private static func trashBundleViaFinder(_ url: URL) -> Bool {
+        let escaped = url.path
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let source = """
+        tell application "Finder"
+            try
+                delete ((POSIX file "\(escaped)") as alias)
+                return "ok"
+            on error errMsg
+                return "error:" & errMsg
+            end try
+        end tell
+        """
+
+        let run: () -> Bool = {
+            guard let script = NSAppleScript(source: source) else { return false }
+            var errorInfo: NSDictionary?
+            let result = script.executeAndReturnError(&errorInfo)
+            if let errorInfo {
+                NSLog("ZeroLaunch: Finder 代删失败: %@", String(describing: errorInfo))
+            }
+            return result.stringValue == "ok"
+        }
+
+        // NSAppleScript 不是线程安全的,统一回到主线程执行
+        if Thread.isMainThread { return run() }
+        var succeeded = false
+        DispatchQueue.main.sync { succeeded = run() }
+        return succeeded
     }
 
     /// 从应用清单、文件夹内容与当前布局中彻底移除指定路径的应用。

@@ -152,6 +152,9 @@ final class CAGridView: NSView, CALayerDelegate, NSDraggingSource {
     var onReorderItems: ((Int, Int) -> Void)?               // 重新排序 (fromIndex, toIndex)
     var onReorderAppBatch: (([String], Int) -> Void)?       // 批量重排（按路径顺序）
     var onRequestNewPage: (() -> Void)?                     // 请求创建新页面
+    /// 一次拖拽会话结束(松手或被取消)时回调。
+    /// 拖到边缘可能临时开出一张空白页,若无 app 落在上面,需要在这里撤掉。
+    var onDragSessionEnded: (() -> Void)?
     var contextMenuConfiguration = AppContextMenuConfiguration()
     var isContextMenuTracking: Bool = false
     var allowsBatchSelectionMode: Bool = true {
@@ -206,7 +209,22 @@ final class CAGridView: NSView, CALayerDelegate, NSDraggingSource {
     // 跨页拖拽
     var edgeDragTimer: Timer?
     let edgeDragThreshold: CGFloat = 60  // 边缘检测区域宽度
-    let edgeDragDelay: TimeInterval = 0.4  // 触发翻页延迟
+    let edgeDragDelay: TimeInterval = 0.6  // 触发翻页延迟（住留多久翻一页）
+    /// 左右两侧额外让出的空隙:给边缘翻页提示条腾位置,
+    /// 否则最后一列图标几乎贴着屏幕边,提示条一定会压上去。
+    static let edgeGutterWidth: CGFloat = 40
+
+    /// 拖到左右边缘时的翻页提示条,进度走满即翻页
+    lazy var edgeHintController: EdgeHintController = {
+        let controller = EdgeHintController()
+        controller.width = min(self.edgeDragThreshold + 12, 72)
+        controller.progressDuration = self.edgeDragDelay
+        // 竖向尽量拉满屏幕两侧,像一条"翻页导轨",而不是一小截卡片
+        controller.verticalInset = 44
+        controller.minHeight = 260
+        controller.cornerRadius = 10
+        return controller
+    }()
 
     // Live reorder during drag
     var currentHoverIndex: Int?

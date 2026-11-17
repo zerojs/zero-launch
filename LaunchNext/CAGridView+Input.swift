@@ -1264,12 +1264,14 @@ extension CAGridView {
 
         if leftEdge && currentPage > 0 {
             // 左边缘 - 翻到上一页
+            updateEdgeHint(side: -1)
             startEdgeDragTimer(direction: -1)
         } else if rightEdge {
             // 右边缘 - 翻到下一页（可能创建新页）
+            updateEdgeHint(side: 1)
             startEdgeDragTimer(direction: 1)
         } else {
-            // 离开边缘区域 - 取消计时器
+            // 离开边缘区域 - 取消计时器(cancelEdgeDragTimer 内会收起提示)
             cancelEdgeDragTimer()
         }
     }
@@ -1280,30 +1282,47 @@ extension CAGridView {
 
         let timer = Timer(timeInterval: edgeDragDelay, repeats: false) { [weak self] _ in
             guard let self = self else { return }
-            let targetPage = self.currentPage + direction
-
-            // 检查是否需要创建新页面
-            if direction > 0 && targetPage >= self.pageCount {
-                // 通知创建新页面
-                self.onRequestNewPage?()
-            }
-
-            self.navigateToPage(targetPage, animated: true)
             self.edgeDragTimer = nil
-
-            // 翻页后继续检测
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                guard let self = self, self.isDraggingItem else { return }
-                self.checkEdgeDrag(at: self.dragCurrentPoint)
-            }
+            self.flipPageDuringEdgeDrag(direction: direction)
         }
         RunLoop.main.add(timer, forMode: .common)
         edgeDragTimer = timer
     }
 
+    /// 边缘计时器到点后的翻页动作。
+    /// 末页再往右翻时需要先建页，而建页是先落到数据层（AppStore 异步）的，
+    /// 所以这里要等它落地后再 navigate，否则目标页会被旧的 pageCount 钳回去，
+    /// 表现为"到边缘后要卡一拍才会翻页"。
+    func flipPageDuringEdgeDrag(direction: Int) {
+        let needsNewPage = direction > 0 && (currentPage + 1) >= pageCount
+
+        guard needsNewPage else {
+            navigateToPage(currentPage + direction, animated: true)
+            scheduleEdgeDragRecheck()
+            return
+        }
+
+        onRequestNewPage?()
+        // 给 SwiftUI 一次视图更新(把新的 items 回灌到网格)的机会再翻页
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self = self, self.isDraggingItem else { return }
+            self.navigateToPage(self.currentPage + direction, animated: true)
+            self.scheduleEdgeDragRecheck()
+        }
+    }
+
+    /// 翻页后继续检测指针是否仍在边缘，支持连续翻页
+    func scheduleEdgeDragRecheck() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self = self, self.isDraggingItem else { return }
+            self.checkEdgeDrag(at: self.dragCurrentPoint)
+        }
+    }
+
     func cancelEdgeDragTimer() {
         edgeDragTimer?.invalidate()
         edgeDragTimer = nil
+        updateEdgeHint(side: 0)
     }
 
     func hardSnapToCurrentPage() {
@@ -1508,9 +1527,12 @@ extension CAGridView {
         }
         hardSnapToCurrentPage()
         logIfMismatch("endDragging")
+        onDragSessionEnded?()
     }
 
     func cancelDragging() {
+        // 拖拽会话是否真的在进行:决定收尾时要不要触发"撤掉未使用的空白页"
+        let hadActiveDrag = draggingItem != nil
         // 必须在清空 dropTargetIndex 前记下原高亮下标:
         // 图标 1.3x 放大是由 applyScaleForIndex 依据 dropTargetIndex 计算出来的,
         // 直接把 dropTargetIndex 置 nil 不会让已经应用的变换自动回弹。
@@ -1520,6 +1542,8 @@ extension CAGridView {
         // Reset icon positions to original
         resetIconPositions()
         cancelFolderDwellTimer()
+        // 收起边缘翻页提示（拖拽中断/取消时可能停在边缘）
+        cancelEdgeDragTimer()
         // 清除按下态:否则 dwell 展开后的残余 mouseDragged/mouseUp 事件
         // 会误触发重新开始拖拽或把"点击"派发到应用上
         pressedIndex = nil
@@ -1538,6 +1562,7 @@ extension CAGridView {
         restoreBatchHiddenCompanionLayers()
         hardSnapToCurrentPage()
         logIfMismatch("cancelDragging")
+        if hadActiveDrag { onDragSessionEnded?() }
     }
 
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {

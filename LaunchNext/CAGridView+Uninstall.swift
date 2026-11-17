@@ -125,9 +125,16 @@ extension CAGridView {
         // 批量选择与右键菜单跟踪期间不抢长按
         guard !isBatchSelectionMode, !isContextMenuTracking else { return }
 
-        // 清掉按下态并吞掉随后的 mouseUp,避免松手时把 app 启动起来
-        setPressedIndex(nil)
+        // 这里**不能**清 pressedIndex。
+        // mouseDragged 是靠 "if !isDraggingItem, let idx = pressedIndex" 判断是否起拖的,
+        // 一旦清掉,进入抖动后的第一次拖动就没有据以起拖的下标,
+        // 表现为"第一次长按只抖动、拖不动,必须松手再按第二次"。
+        // 松手误启动 app 的问题由 mouseUp 里的 isJiggleMode 分支兜住(抖动模式下不启动)。
+        //
+        // 先把本地状态打开再通知外部:updateNSView 回填 isJiggleMode 要等下一次
+        // SwiftUI 更新,而同一轮事件里的 mouseUp / mouseDragged 需要立刻读到它。
         enterJiggleMode()
+        isJiggleMode = true
     }
 }
 
@@ -162,7 +169,10 @@ func presentUninstallConfirmation(for app: AppInfo, appStore: AppStore, parentWi
         failure.messageText = String(format: appStore.localized(.uninstallFailedTitle), app.name)
         // 权限类失败时补一句可执行的引导:告诉用户下一步能做什么,
         // 而不是只丢一个系统错误串。
-        let detail = (error as NSError).localizedDescription
+        // 权限类失败时,人能读的那句话无法区分是 TCC、POSIX 还是别的,
+        // 所以把机器可读的 domain / code 一并带上,便于定位。
+        let nsError = error as NSError
+        let detail = "\(nsError.localizedDescription)（\(nsError.domain) \(nsError.code)）"
         failure.informativeText = "\(detail)\n\n" + appStore.localized(.uninstallFailedHint)
         failure.addButton(withTitle: appStore.localized(.uninstallOK))
         failure.addButton(withTitle: appStore.localized(.contextMenuShowInFinder))

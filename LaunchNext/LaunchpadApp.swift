@@ -125,7 +125,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSGestureR
         var socketPathForEndpoint: String?
         if needsEndpoint {
             guard let socketPath = LaunchNextCLIIPCConfig.socketPath() else {
-                fputs("Failed to resolve LaunchNext CLI socket path.\n", stderr)
+                fputs("Failed to resolve ZeroLaunch CLI socket path.\n", stderr)
                 isTerminating = true
                 NSApp.terminate(nil)
                 return true
@@ -191,7 +191,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSGestureR
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     guard self.isHeadlessTUIRuntime, !self.isTerminating else { return }
-                    fputs("LaunchNext GUI disconnected. Exiting TUI process.\n", stderr)
+                    fputs("ZeroLaunch GUI disconnected. Exiting TUI process.\n", stderr)
                     self.isTerminating = true
                     NSApp.terminate(nil)
                 }
@@ -530,7 +530,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSGestureR
 
         if cliIPCServer == nil {
             cliIPCServer = LaunchNextCLIIPCServer(socketPath: socketPath) { [weak self] command, arguments in
-                guard let self else { return .failure("LaunchNext GUI is unavailable.") }
+                guard let self else { return .failure("ZeroLaunch GUI is unavailable.") }
                 return self.handleCLIIPCCommand(command, arguments: arguments)
             }
         }

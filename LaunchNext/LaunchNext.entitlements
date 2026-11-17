@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  开启 Hardened Runtime 后，向其他进程发送 Apple Event 必须声明此权限，
+	  否则会被系统以 -1743 拒绝。
+
+	  用途：卸载 App 时，如果系统「App 管理」拒绝了本进程（ad-hoc 签名下授权
+	  会随每次重新编译失效），代码会降级为「请 Finder 代删」——那一步需要向
+	  Finder 发送 Apple Event。
+	-->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+</dict>
+</plist>

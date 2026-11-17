@@ -115,7 +115,20 @@ final class CAFolderGridView: NSView {
     private let rowSpacing: CGFloat = 18
     private let dragOutInset: CGFloat = -14
     private let pageFlipEdgeWidth: CGFloat = 60
-    private let pageFlipDelay: TimeInterval = 0.4
+    private let pageFlipDelay: TimeInterval = 0.6
+
+    /// 拖到面板左右边缘时的翻页提示条（与主网格同一套样式）
+    private lazy var edgeHintController: EdgeHintController = {
+        let controller = EdgeHintController()
+        // 文件夹面板是窄面板，列宽基本填满，外侧没有主网格那样的空白带，
+        // 所以这里用一条更窄的竖条，尽量减少压住图标
+        controller.width = 56
+        controller.progressDuration = self.pageFlipDelay
+        controller.verticalInset = 32
+        controller.minHeight = 160
+        controller.cornerRadius = 10
+        return controller
+    }()
 
     private var contentLayer = CALayer()
     private var displayLink: CADisplayLink?
@@ -221,6 +234,7 @@ final class CAFolderGridView: NSView {
             targetHorizontalOffset = horizontalOffset
         }
         updateLayout(animated: false)
+        edgeHintController.layoutIfVisible(in: bounds)
     }
 
     override func updateTrackingAreas() {
@@ -1174,26 +1188,7 @@ final class CAFolderGridView: NSView {
             return
         }
 
-        if layoutMode == .paged {
-            let edgeDirection: Int?
-            if point.x < pageFlipEdgeWidth {
-                edgeDirection = -1
-            } else if point.x > bounds.width - pageFlipEdgeWidth {
-                edgeDirection = 1
-            } else {
-                edgeDirection = nil
-            }
-
-            if let edgeDirection {
-                if !edgeDragRequiresReentry {
-                    startEdgeFlipTimer(direction: edgeDirection)
-                }
-            } else {
-                edgeDragRequiresReentry = false
-                cancelEdgeFlipTimer()
-            }
-            guard !isPageScrollAnimating else { return }
-        }
+        if handleEdgeFlip(at: point) { return }
 
         let hoverIndex = gridIndex(at: point)
         updateReorderPreview(targetIndex: hoverIndex == draggingIndex ? nil : hoverIndex)
@@ -1264,26 +1259,7 @@ final class CAFolderGridView: NSView {
         draggingLayer?.frame = CGRect(x: point.x - iconSize / 2, y: point.y - iconSize / 2, width: iconSize, height: iconSize)
         CATransaction.commit()
 
-        if layoutMode == .paged {
-            let edgeDirection: Int?
-            if point.x < pageFlipEdgeWidth {
-                edgeDirection = -1
-            } else if point.x > bounds.width - pageFlipEdgeWidth {
-                edgeDirection = 1
-            } else {
-                edgeDirection = nil
-            }
-
-            if let edgeDirection {
-                if !edgeDragRequiresReentry {
-                    startEdgeFlipTimer(direction: edgeDirection)
-                }
-            } else {
-                edgeDragRequiresReentry = false
-                cancelEdgeFlipTimer()
-            }
-            guard !isPageScrollAnimating else { return }
-        }
+        if handleEdgeFlip(at: point) { return }
 
         let hoverIndex = gridIndex(at: point)
         updateReorderPreview(targetIndex: hoverIndex)
@@ -1325,6 +1301,61 @@ final class CAFolderGridView: NSView {
         pressedIndex = nil
     }
 
+    /// 处理拖拽到面板左右边缘的翻页（含提示条）。
+    /// - Returns: true 表示正在翻页动画中，调用方应跳过重排预览。
+    @discardableResult
+    private func handleEdgeFlip(at point: CGPoint) -> Bool {
+        guard layoutMode == .paged else { return false }
+
+        let direction: Int?
+        if point.x < pageFlipEdgeWidth {
+            direction = -1
+        } else if point.x > bounds.width - pageFlipEdgeWidth {
+            direction = 1
+        } else {
+            direction = nil
+        }
+
+        if let direction {
+            if !edgeDragRequiresReentry {
+                startEdgeFlipTimer(direction: direction)
+            }
+        } else {
+            edgeDragRequiresReentry = false
+            cancelEdgeFlipTimer()
+        }
+
+        updateEdgeFlipHint(direction: direction)
+        return isPageScrollAnimating
+    }
+
+    /// 只有确实能翻到相邻页时才给提示，避免末页/首页空提示
+    private func updateEdgeFlipHint(direction: Int?) {
+        guard let direction else {
+            edgeHintController.hide()
+            return
+        }
+        let targetPage = currentPage + direction
+        guard targetPage >= 0, targetPage < pageCount,
+              !edgeDragRequiresReentry, !isPageScrollAnimating else {
+            edgeHintController.hide()
+            return
+        }
+        // 面板外侧的空白带（最后一列图标右缘 → 面板右缘）有多宽就多宽，最多 80pt
+        edgeHintController.width = max(32, min(80, trailingEdgeMargin() - 2))
+        edgeHintController.update(side: direction, in: bounds, host: layer)
+    }
+
+    /// 最后一列图标右缘 → 面板右缘 的空白带宽度
+    private func trailingEdgeMargin() -> CGFloat {
+        guard bounds.width > 0 else { return 0 }
+        let metrics = makeMetrics()
+        let strideX = metrics.cellWidth + columnSpacing
+        let lastCellOriginX = contentInsets.left + CGFloat(max(metrics.columns - 1, 0)) * strideX
+        let iconRightEdge = lastCellOriginX + (metrics.cellWidth + iconSize) / 2
+        return max(0, bounds.width - iconRightEdge)
+    }
+
     private func startEdgeFlipTimer(direction: Int) {
         guard layoutMode == .paged, !isPageScrollAnimating else { return }
         let targetPage = currentPage + direction
@@ -1363,6 +1394,7 @@ final class CAFolderGridView: NSView {
         edgeDragTimer?.invalidate()
         edgeDragTimer = nil
         edgeDragDirection = nil
+        edgeHintController.hide()
     }
 
     private func finishDragging(at point: CGPoint) {
@@ -1695,8 +1727,10 @@ final class CAFolderGridView: NSView {
         cancelJiggleLongPress()
         guard !isJiggleMode, !isDraggingItem, apps.indices.contains(index) else { return }
         guard pressedIndex == index else { return }
-        pressedIndex = nil
-        applyScale(at: index, animated: true)
+        // 与主网格同理:清掉 pressedIndex 会让 mouseDragged 的起拖判定失败,
+        // 变成"第一次长按只抖动、拖不动"。松手不启动 app 由 mouseUp 的
+        // isJiggleMode 分支兜住。本地状态先打开,再通知外部。
+        isJiggleMode = true
         onEnterJiggleMode?()
     }
 

@@ -3009,12 +3009,12 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                             Divider()
-                            cliCommandRow("LaunchNext --cli help")
-                            cliCommandRow("LaunchNext --tui")
+                            cliCommandRow("launchnext --cli help")
+                            cliCommandRow("launchnext --tui")
                             DisclosureGroup(
                                 isExpanded: $showCLIFullPathCommand,
                                 content: {
-                                    cliCommandRow("/Applications/LaunchNext.app/Contents/MacOS/LaunchNext --tui")
+                                    cliCommandRow("/Applications/ZeroLaunch.app/Contents/MacOS/ZeroLaunch --tui")
                                         .padding(.top, 4)
                                 },
                                 label: {
@@ -3842,7 +3842,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 16) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Label("LaunchNext", systemImage: "keyboard")
+                        Label("ZeroLaunch", systemImage: "keyboard")
                             .font(.headline)
                         Text(appStore.localized(.globalShortcutDescription))
                             .font(.footnote)
@@ -6147,7 +6147,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         let alert = NSAlert()
         alert.messageText = "Backup Failed"
         let message = (error as NSError).localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        alert.informativeText = message.isEmpty ? "LaunchNext could not create a complete backup." : message
+        alert.informativeText = message.isEmpty ? "ZeroLaunch could not create a complete backup." : message
         alert.alertStyle = .warning
         alert.addButton(withTitle: appStore.localized(.okButton))
 
