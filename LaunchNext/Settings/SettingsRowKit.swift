@@ -228,4 +228,17 @@ extension View {
         disabled(!isEnabled)
             .opacity(isEnabled ? 1 : dimmedOpacity)
     }
+
+    /// 给无背景按钮铺满命中区域。
+    ///
+    /// `.buttonStyle(.plain)` / `.borderless` 下只有图标与文字这些「有像素」的子视图
+    /// 参与命中测试，视图本身是透明的：
+    /// - `Label` 的图标与文字之间的间隙点不到（「重置布局」「恢复默认」都是这样）；
+    /// - 外面用 padding / `frame(maxWidth: .infinity)` 撑出来的透明区域也点不到。
+    /// 在标签最外层铺一次 contentShape，整块矩形就都能触发。
+    ///
+    /// 只影响命中测试、不改变布局尺寸。
+    func settingsHitArea() -> some View {
+        contentShape(Rectangle())
+    }
 }

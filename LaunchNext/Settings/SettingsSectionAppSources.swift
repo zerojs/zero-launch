@@ -49,6 +49,8 @@ extension SettingsView {
                         presentAppSourcePicker()
                     } label: {
                         Label(appStore.localized(.scanSourcesAddButton), systemImage: "plus.circle")
+                            // 图标与文字之间的间隙原本点不到，铺满命中区域。
+                            .settingsHitArea()
                     }
                     .buttonStyle(.borderless)
 
@@ -56,6 +58,8 @@ extension SettingsView {
                         showAppSourcesResetDialog = true
                     } label: {
                         Label(appStore.localized(.scanSourcesResetButton), systemImage: "arrow.counterclockwise")
+                            // 图标与文字之间的间隙原本点不到，铺满命中区域。
+                            .settingsHitArea()
                     }
                     .buttonStyle(.borderless)
                     .disabled(appStore.customAppSourcePaths.isEmpty)

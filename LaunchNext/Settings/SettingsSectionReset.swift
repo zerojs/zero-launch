@@ -38,6 +38,8 @@ struct SettingsResetFooter: View {
                 } label: {
                     Label(buttonTitle, systemImage: "arrow.counterclockwise")
                         .foregroundStyle(Color.red)
+                        // 图标与文字之间的间隙原本点不到，铺满命中区域。
+                        .settingsHitArea()
                 }
                 .buttonStyle(.plain)
                 .fixedSize()

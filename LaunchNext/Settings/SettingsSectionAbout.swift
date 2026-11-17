@@ -257,6 +257,8 @@ extension SettingsView {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity)
+                // 玻璃背景在按钮外侧，只有图标与文字本身能点；铺满命中区域。
+                .settingsHitArea()
         }
         .buttonStyle(.plain)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))

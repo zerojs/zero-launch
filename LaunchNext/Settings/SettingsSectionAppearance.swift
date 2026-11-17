@@ -346,6 +346,8 @@ extension SettingsView {
                     .foregroundStyle(.primary)
             }
             .frame(minWidth: 52, alignment: .leading)
+            // 预览图与文字之间的间隙、文字右侧的空白原本点不到，铺满命中区域。
+            .settingsHitArea()
         }
         .buttonStyle(.plain)
     }
