@@ -30,6 +30,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSGestureR
     private let minimumContentSize = NSSize(width: 800, height: 600)
     private var lastShowAt: Date?
     private var cancellables = Set<AnyCancellable>()
+
     private var hotKeyRef: EventHotKeyRef?
     private var hotKeyEventHandler: EventHandlerRef?
     // private var aiHotKeyRef: EventHotKeyRef?
@@ -1755,8 +1756,47 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSGestureR
         }
 
         isAnimatingWindow = true
+        let duration = appStore.windowAnimationDuration
+
+        // 内容层缩放：进场由大到小（四周向中心收拢），退场由小到大（向四周外扩）。
+        // 纯 alpha 渐隐的「消失感」几乎不可感知（后段已近全透明），叠加缩放让
+        // 关闭获得与打开对称的动画感。
+        // 注意：CALayer 默认 anchorPoint 落在角上，直接用 transform.scale 会表现
+        // 为从单一角缩放；这里用「平移-缩放-平移」合成 transform，把不动点钉在
+        // 窗口中心，与 anchorPoint 取值无关。
+        if let content = window.contentView {
+            content.wantsLayer = true
+            if let layer = content.layer {
+                let zoom: CGFloat = 1.06
+                let size = layer.bounds.size
+                let centerScaled: CATransform3D = {
+                    var t = CATransform3DIdentity
+                    t = CATransform3DTranslate(t, size.width / 2, size.height / 2, 0)
+                    t = CATransform3DScale(t, zoom, zoom, 1)
+                    t = CATransform3DTranslate(t, -size.width / 2, -size.height / 2, 0)
+                    return t
+                }()
+                let anim = CABasicAnimation(keyPath: "transform")
+                if targetAlpha >= 0.5 {
+                    // 进场：由大到小收拢
+                    anim.fromValue = NSValue(caTransform3D: centerScaled)
+                    anim.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+                } else {
+                    // 退场：由小到大外扩
+                    anim.fromValue = NSValue(caTransform3D: CATransform3DIdentity)
+                    anim.toValue = NSValue(caTransform3D: centerScaled)
+                }
+                anim.duration = duration
+                anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                // removedOnCompletion 默认 true：动画结束回落到模型值（identity）。
+                // 打开的 to 值恰好是模型值，无收尾跳变；关闭结束时窗口已被 finalize
+                // orderOut，同样无跳变风险。模型值全程不动，无需重置。
+                layer.add(anim, forKey: "windowTransitionScale")
+            }
+        }
+
         NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = appStore.windowAnimationDuration
+            ctx.duration = duration
             ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().alphaValue = targetAlpha
             window.contentView?.animator().alphaValue = targetAlpha
