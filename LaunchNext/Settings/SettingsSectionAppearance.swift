@@ -371,352 +371,468 @@ extension SettingsView {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    var appearanceBehaviorSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            SettingsToggleRow(title: appStore.localized(.classicMode), isOn: $appStore.isFullscreenMode)
-            SettingsToggleRow(title: appStore.localized(.showLabels), isOn: $appStore.showLabels)
-            SettingsToggleRow(title: appStore.localized(.useLocalizedThirdPartyTitles), isOn: $appStore.useLocalizedThirdPartyTitles)
+    /// 显示模式选择卡：全屏 / 窗口。
+    /// 之前是一行「经典 Launchpad（全屏）」开关——绑定的是 isFullscreenMode，开关形态
+    /// 让人以为开着是"经典"、关着是别的什么；双选卡片 + 缩略图把两个模式直接画出来。
+    @ViewBuilder
+    var displayModeCard: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(appStore.localized(.displayModeTitle))
+                .font(.headline)
+                .frame(minWidth: 90, alignment: .leading)
 
-            // 拖拽预测与滚动翻页由 CA 网格渲染接管，开启时这两项不生效。
-            SettingsToggleRow(title: appStore.localized(.predictDrop), isOn: $appStore.enableDropPrediction)
-                .settingsEnabled(!appStore.useCAGridRenderer)
+            Spacer(minLength: 8)
 
-            SettingsToggleRow(title: appStore.localized(.enableAnimations), isOn: $appStore.enableAnimations)
-
-            SettingsToggleRow(title: appStore.localized(.followScrollPagingTitle), isOn: $appStore.followScrollPagingEnabled)
-                .settingsEnabled(!appStore.useCAGridRenderer)
-
-            SettingsToggleRow(title: appStore.localized(.hideDockOption), isOn: $appStore.hideDock)
-
-            // 隐藏菜单栏只对全屏模式有意义：紧凑模式是一个普通窗口，菜单栏本来就不归它管。
-            SettingsToggleRow(title: appStore.localized(.hideMenuBarOption), isOn: $appStore.hideMenuBar) {
-                SettingsModeBadge(text: appStore.localized(.appearanceScopeFullscreenOnly))
-                SettingsInfoAffordance(isPresented: $showHideMenuBarInfoPopover, width: 280) {
-                    SettingsInfoBody(text: appStore.localized(.hideMenuBarInfoBody))
-                }
-            }
-            .settingsEnabled(appStore.isFullscreenMode, dimmedOpacity: 0.45)
-
-            SettingsToggleRow(title: appStore.localized(.rememberPageTitle), isOn: $appStore.rememberLastPage)
-            SettingsToggleRow(title: appStore.localized(.hoverMagnification), isOn: $appStore.enableHoverMagnification)
-            SettingsToggleRow(title: appStore.localized(.activePressEffect), isOn: $appStore.enableActivePressEffect)
-
-            VStack(alignment: .leading, spacing: 6) {
-                SettingsToggleRow(
-                    title: appStore.localized(.folderPreviewHighResTitle),
-                    isOn: $appStore.enableHighResFolderPreviews
+            HStack(spacing: 16) {
+                displayModeOption(
+                    title: appStore.localized(.displayModeFullscreen),
+                    isFullscreen: true,
+                    preview: { displayModePreviewFullscreen }
                 )
-                SettingsHint(appStore.localized(.folderPreviewHighResHint))
+                displayModeOption(
+                    title: appStore.localized(.displayModeWindow),
+                    isFullscreen: false,
+                    preview: { displayModePreviewWindow }
+                )
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
 
-            SettingsToggleRow(
-                title: appStore.localized(.folderQuickLaunchTitle),
-                isOn: $appStore.folderQuickLaunchEnabled
-            ) {
-                SettingsInfoAffordance(isPresented: $showFolderQuickLaunchInfoPopover, width: 280) {
-                    SettingsInfoBody(text: appStore.localized(.folderQuickLaunchHint))
+    func displayModeOption(title: String, isFullscreen: Bool, @ViewBuilder preview: () -> some View) -> some View {
+        let isSelected = appStore.isFullscreenMode == isFullscreen
+        return Button {
+            // isFullscreenMode 的 didSet 会同步调 updateWindowMode，切换即时生效（与原开关一致）。
+            withAnimation(.easeInOut(duration: 0.15)) {
+                appStore.isFullscreenMode = isFullscreen
+            }
+        } label: {
+            VStack(spacing: 2) {
+                preview()
+                    .frame(width: 60, height: 40)
+                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .stroke(isSelected ? Color.accentColor : Color.primary.opacity(0.08), lineWidth: isSelected ? 2 : 1)
+                    )
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+            }
+            // 预览图与文字之间的间隙原本点不到，铺满命中区域。
+            .settingsHitArea()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// 全屏模式缩略图：壁纸底 + 满铺图标点阵（示意，不含真实图标）。
+    var displayModePreviewFullscreen: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(red: 0.22, green: 0.42, blue: 0.74), Color(red: 0.36, green: 0.56, blue: 0.86)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+            displayModeDotGrid(rows: 3, columns: 5, dotSize: 5, spacing: 4)
+                .foregroundStyle(Color.white.opacity(0.85))
+        }
+    }
+
+    /// 窗口模式缩略图：浅色底 + 居中的小窗口，点阵只在小窗口里。
+    var displayModePreviewWindow: some View {
+        ZStack {
+            Color(nsColor: .quaternarySystemFill)
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+                .shadow(color: .black.opacity(0.18), radius: 1, y: 0.5)
+                .frame(width: 46, height: 30)
+                .overlay {
+                    displayModeDotGrid(rows: 2, columns: 5, dotSize: 3.5, spacing: 3)
+                        .foregroundStyle(Color.secondary.opacity(0.75))
                 }
-            }
-            .settingsEnabled(appStore.useCAGridRenderer)
+        }
+    }
 
-            SettingsToggleRow(title: appStore.localized(.windowOpenAnimationTitle), isOn: $appStore.enableWindowOpenAnimation)
-
-            SettingsSliderRow(
-                title: appStore.localized(.windowAnimationDurationLabel),
-                value: $appStore.windowAnimationDuration,
-                range: AppStore.windowAnimationDurationRange,
-                step: 0.05,
-                isEnabled: appStore.enableWindowOpenAnimation
-            ) {
-                Text(String(format: "%.2fs", appStore.windowAnimationDuration))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-
-            SettingsSliderRow(
-                title: appStore.localized(.animationDurationLabel),
-                value: $appStore.animationDuration,
-                range: 0.1...1.0,
-                step: 0.05,
-                lowerLabel: "0.1s",
-                centerLabel: String(format: "%.2fs", appStore.animationDuration),
-                upperLabel: "1.0s",
-                isEnabled: appStore.enableAnimations && !appStore.useCAGridRenderer
-            )
-
-            SettingsSliderRow(
-                title: appStore.localized(.hoverMagnificationScale),
-                value: $appStore.hoverMagnificationScale,
-                range: AppStore.hoverMagnificationRange,
-                lowerLabel: String(format: "%.2fx", AppStore.hoverMagnificationRange.lowerBound),
-                centerLabel: String(format: "%.2fx", appStore.hoverMagnificationScale),
-                upperLabel: String(format: "%.2fx", AppStore.hoverMagnificationRange.upperBound),
-                isEnabled: appStore.enableHoverMagnification,
-                dimsWhenDisabled: false
-            )
-
-            SettingsSliderRow(
-                title: appStore.localized(.activePressScale),
-                value: $appStore.activePressScale,
-                range: AppStore.activePressScaleRange,
-                lowerLabel: String(format: "%.2fx", AppStore.activePressScaleRange.lowerBound),
-                centerLabel: String(format: "%.2fx", appStore.activePressScale),
-                upperLabel: String(format: "%.2fx", AppStore.activePressScaleRange.upperBound),
-                isEnabled: appStore.enableActivePressEffect,
-                dimsWhenDisabled: false
-            )
-
-            SettingsSliderRow(
-                title: appStore.localized(.labelFontSize),
-                value: scopedIconLabelFontSizeBinding(),
-                range: 9...16,
-                step: 0.5,
-                lowerLabel: "9pt",
-                upperLabel: "16pt"
-            ) {
-                layoutModeScopeControl()
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text(appStore.localized(.iconLabelFontWeight))
-                    .font(.headline)
-                Picker("", selection: $appStore.iconLabelFontWeight) {
-                    ForEach(AppStore.IconLabelFontWeightOption.allCases) { option in
-                        Text(option.displayName).tag(option)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(appStore.localized(.iconLabelColorTitle))
-                        .font(.headline)
-                    Spacer()
-                    Toggle(appStore.localized(.iconLabelColorFollowSystem), isOn: $iconLabelColorFollowSystem)
-                        .toggleStyle(.checkbox)
-                    if !iconLabelColorFollowSystem {
-                        ColorPicker("", selection: $iconLabelColorSelection, supportsOpacity: false)
-                            .labelsHidden()
+    func displayModeDotGrid(rows: Int, columns: Int, dotSize: CGFloat, spacing: CGFloat) -> some View {
+        VStack(spacing: spacing) {
+            ForEach(0..<rows, id: \.self) { _ in
+                HStack(spacing: spacing) {
+                    ForEach(0..<columns, id: \.self) { _ in
+                        RoundedRectangle(cornerRadius: dotSize * 0.3)
+                            .frame(width: dotSize, height: dotSize)
                     }
                 }
             }
-            .onAppear { syncIconLabelColorState() }
-            .onChange(of: iconLabelColorFollowSystem) { _, followSystem in
-                if followSystem {
-                    appStore.iconLabelColorHex = ""
-                } else {
-                    appStore.iconLabelColorHex = iconLabelColorHexValue(from: iconLabelColorSelection)
+        }
+    }
+
+    /// 作用域切换器：本 tab 内所有「全屏/窗口各存一套值」的设置都跟随它编辑哪一套。
+    /// 状态共享（layoutModePreviewScope），tab 顶部放一个，替代以前散在 6 行里的重复控件。
+    var appearanceScopeHeader: some View {
+        HStack {
+            Text(appStore.localized(.layoutScopeHeaderTitle))
+                .font(.headline)
+            Spacer()
+            layoutModeScopeControl(width: 150)
+        }
+    }
+
+    var appearanceWindowSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // 功能相关联的设置用 SettingsGroupBox 框在一起：开关和它的联动滑杆/说明
+            // 不再隔着十几行，归属一眼可辨。组内顺序 = 操作顺序（先开关后调参）。
+
+            appearanceScopeHeader
+
+            SettingsGroupBox(title: appStore.localized(.appearanceGroupWindow)) {
+                displayModeCard
+                SettingsToggleRow(title: appStore.localized(.hideDockOption), isOn: $appStore.hideDock)
+
+                // 隐藏菜单栏只对全屏模式有意义：窗口模式是一个普通窗口，菜单栏本来就不归它管。
+                // 单模式设置跟随显示模式显隐——窗口模式下整行隐藏，而不是灰着占位。
+                if appStore.isFullscreenMode {
+                    SettingsToggleRow(title: appStore.localized(.hideMenuBarOption), isOn: $appStore.hideMenuBar) {
+                        SettingsInfoAffordance(isPresented: $showHideMenuBarInfoPopover, width: 280) {
+                            SettingsInfoBody(text: appStore.localized(.hideMenuBarInfoBody))
+                        }
+                    }
                 }
             }
-            .onChange(of: iconLabelColorSelection) { _, newColor in
-                guard !iconLabelColorFollowSystem else { return }
-                appStore.iconLabelColorHex = iconLabelColorHexValue(from: newColor)
+
+            SettingsGroupBox(title: appStore.localized(.appearanceGroupAnimation)) {
+                SettingsToggleRow(title: appStore.localized(.enableAnimations), isOn: $appStore.enableAnimations)
+                SettingsToggleRow(title: appStore.localized(.windowOpenAnimationTitle), isOn: $appStore.enableWindowOpenAnimation)
+
+                SettingsSliderRow(
+                    title: appStore.localized(.windowAnimationDurationLabel),
+                    value: $appStore.windowAnimationDuration,
+                    range: AppStore.windowAnimationDurationRange,
+                    step: 0.05,
+                    isEnabled: appStore.enableWindowOpenAnimation
+                ) {
+                    Text(String(format: "%.2fs", appStore.windowAnimationDuration))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+
+                SettingsSliderRow(
+                    title: appStore.localized(.animationDurationLabel),
+                    value: $appStore.animationDuration,
+                    range: 0.1...1.0,
+                    step: 0.05,
+                    lowerLabel: "0.1s",
+                    centerLabel: String(format: "%.2fs", appStore.animationDuration),
+                    upperLabel: "1.0s",
+                    // animationDuration 只被 CA 渲染器消费（CAGridViewRepresentable /
+                    // CAFolderGridViewRepresentable），传统渲染器路径不读这个值。
+                    // 此前禁用条件写反（!useCAGridRenderer），导致 CA 开时滑杆被禁、
+                    // CA 关时滑杆可调却毫无效果。
+                    isEnabled: appStore.enableAnimations && appStore.useCAGridRenderer,
+                    badgeText: appStore.localized(.caRendererBadge)
+                )
             }
 
-            SettingsSliderRow(
-                title: appStore.localized(.scrollSensitivity),
-                value: $appStore.scrollSensitivity,
-                range: 0.01...0.99,
-                lowerLabel: appStore.localized(.low),
-                upperLabel: appStore.localized(.high)
-            )
+            SettingsGroupBox(title: appStore.localized(.appearanceGroupScrolling)) {
+                // 拖拽预测与滚动翻页由 CA 网格渲染接管，开启时这两项不生效。
+                // 徽标把生效条件摆在标题旁边，而不是等用户打开 CA 渲染器后发现开关点不动。
+                SettingsToggleRow(title: appStore.localized(.predictDrop), isOn: $appStore.enableDropPrediction) {
+                    SettingsModeBadge(text: appStore.localized(.legacyRendererBadge))
+                }
+                .settingsEnabled(!appStore.useCAGridRenderer)
+
+                SettingsToggleRow(title: appStore.localized(.followScrollPagingTitle), isOn: $appStore.followScrollPagingEnabled) {
+                    SettingsModeBadge(text: appStore.localized(.legacyRendererBadge))
+                }
+                .settingsEnabled(!appStore.useCAGridRenderer)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    SettingsSliderRow(
+                        title: appStore.localized(.scrollSensitivity),
+                        value: $appStore.scrollSensitivity,
+                        range: 0.01...0.99,
+                        lowerLabel: appStore.localized(.low),
+                        upperLabel: appStore.localized(.high)
+                    )
+                    SettingsHint(appStore.localized(.scrollSensitivityHint))
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    SettingsToggleRow(title: appStore.localized(.rememberPageTitle), isOn: $appStore.rememberLastPage)
+                    SettingsHint(appStore.localized(.rememberPageHint))
+                }
+            }
+
+            SettingsGroupBox(title: appStore.localized(.appearanceGroupPageIndicator)) {
+                // 页码指示器全局位置（下边距/上方间距）设置项已移除，默认贴底、紧贴网格；
+                // 需要微调的场合走「按显示器独立设置」的覆盖体系。
+                VStack(alignment: .leading, spacing: 8) {
+                    let perDisplayBinding = scopedPerDisplayIndicatorBinding()
+                    Button {
+                        perDisplayBinding.wrappedValue.toggle()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(appStore.localized(.perDisplayIndicatorPositionTitle))
+                                .font(.headline)
+                            Spacer()
+                            Toggle("", isOn: perDisplayBinding)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                                .allowsHitTesting(false)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PressFeedbackRowButtonStyle(enabled: true, pressScale: 0.98))
+                    SettingsHint(appStore.localized(.perDisplayIndicatorPositionDescription))
+
+                    if selectedScopePerDisplayEnabled {
+                        HStack {
+                            Button(appStore.localized(.applyDefaultsToCurrentDisplay)) {
+                                if let screenID = currentIndicatorScreenID {
+                                    appStore.applyIndicatorDefaults(to: screenID, mode: selectedAppearanceLayoutMode)
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            Spacer()
+                        }
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(indicatorScreenEntries) { entry in
+                                indicatorOverrideCard(for: entry)
+                            }
+                        }
+                    }
+                }
+            }
 
             appearanceResetFooter
         }
     }
 
-    var appearanceLayoutSection: some View {
+    var appearanceIconsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(appStore.localized(.sidebarIconSizeTitle))
-                    .font(.headline)
-                Picker("", selection: $appStore.sidebarIconPreset) {
-                    Text(appStore.localized(.sidebarIconSizeLarge)).tag(AppStore.SidebarIconPreset.large)
-                    Text(appStore.localized(.sidebarIconSizeMedium)).tag(AppStore.SidebarIconPreset.medium)
+            appearanceScopeHeader
+
+            SettingsGroupBox(title: appStore.localized(.appearanceGroupGrid)) {
+                SettingsSliderRow(
+                    title: appStore.localized(.iconSize),
+                    value: scopedIconScaleBinding(),
+                    range: 0.8...1.1,
+                    lowerLabel: appStore.localized(.smaller),
+                    upperLabel: appStore.localized(.larger)
+                )
+
+                SettingsStepperRow(
+                    title: appStore.localized(.iconsPerRow),
+                    value: $appStore.gridColumnsPerPage,
+                    range: AppStore.gridColumnRange
+                )
+
+                SettingsStepperRow(
+                    title: appStore.localized(.rowsPerPage),
+                    value: $appStore.gridRowsPerPage,
+                    range: AppStore.gridRowRange
+                )
+
+                SettingsSliderRow(
+                    title: appStore.localized(.iconHorizontalSpacing),
+                    value: $appStore.iconColumnSpacing,
+                    range: AppStore.columnSpacingRange,
+                    step: 1
+                ) {
+                    Text("\(Int(appStore.iconColumnSpacing)) pt")
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
                 }
-                .pickerStyle(.menu)
-                .labelsHidden()
-            }
 
-            SettingsSliderRow(
-                title: appStore.localized(.iconSize),
-                value: scopedIconScaleBinding(),
-                range: 0.8...1.1,
-                lowerLabel: appStore.localized(.smaller),
-                upperLabel: appStore.localized(.larger)
-            ) {
-                layoutModeScopeControl()
-            }
+                SettingsSliderRow(
+                    title: appStore.localized(.iconVerticalSpacing),
+                    value: $appStore.iconRowSpacing,
+                    range: AppStore.rowSpacingRange,
+                    step: 1
+                ) {
+                    Text("\(Int(appStore.iconRowSpacing)) pt")
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
 
-            // 两个步进器行以前套了一层只有单个子视图的 VStack，顺手压平。
-            SettingsStepperRow(
-                title: appStore.localized(.iconsPerRow),
-                value: $appStore.gridColumnsPerPage,
-                range: AppStore.gridColumnRange
-            )
-
-            SettingsStepperRow(
-                title: appStore.localized(.rowsPerPage),
-                value: $appStore.gridRowsPerPage,
-                range: AppStore.gridRowRange
-            )
-
-            SettingsSliderRow(
-                title: appStore.localized(.iconHorizontalSpacing),
-                value: $appStore.iconColumnSpacing,
-                range: AppStore.columnSpacingRange,
-                step: 1
-            ) {
-                Text("\(Int(appStore.iconColumnSpacing)) pt")
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-
-            SettingsSliderRow(
-                title: appStore.localized(.iconVerticalSpacing),
-                value: $appStore.iconRowSpacing,
-                range: AppStore.rowSpacingRange,
-                step: 1
-            ) {
-                Text("\(Int(appStore.iconRowSpacing)) pt")
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
                 Text(appStore.localized(.gridSizeChangeWarning))
-                Text(appStore.localized(.pageIndicatorHint))
-                    .foregroundStyle(.tertiary)
-            }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .padding(.top, 2)
-
-            SettingsSliderRow(
-                title: appStore.localized(.folderWindowWidth),
-                value: $appStore.folderPopoverWidthFactor,
-                range: AppStore.folderPopoverWidthRange,
-                lowerLabel: String(format: "%.0f%%", AppStore.folderPopoverWidthRange.lowerBound * 100),
-                upperLabel: String(format: "%.0f%%", AppStore.folderPopoverWidthRange.upperBound * 100),
-                isEnabled: !appStore.isFullscreenMode,
-                badgeText: appStore.localized(.appearanceScopeCompactOnly)
-            ) {
-                Text(String(format: "%.0f%%", appStore.folderPopoverWidthFactor * 100))
-                    .font(.subheadline)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
             }
 
-            SettingsSliderRow(
-                title: appStore.localized(.folderWindowHeight),
-                value: $appStore.folderPopoverHeightFactor,
-                range: AppStore.folderPopoverHeightRange,
-                lowerLabel: String(format: "%.0f%%", AppStore.folderPopoverHeightRange.lowerBound * 100),
-                upperLabel: String(format: "%.0f%%", AppStore.folderPopoverHeightRange.upperBound * 100),
-                isEnabled: !appStore.isFullscreenMode,
-                badgeText: appStore.localized(.appearanceScopeCompactOnly)
-            ) {
-                Text(String(format: "%.0f%%", appStore.folderPopoverHeightFactor * 100))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+            SettingsGroupBox(title: appStore.localized(.appearanceGroupIconLabel)) {
+                SettingsToggleRow(title: appStore.localized(.showLabels), isOn: $appStore.showLabels)
 
-            SettingsHint(appStore.localized(.folderWindowSizeHint))
+                SettingsSliderRow(
+                    title: appStore.localized(.labelFontSize),
+                    value: scopedIconLabelFontSizeBinding(),
+                    range: 9...16,
+                    step: 0.5,
+                    lowerLabel: "9pt",
+                    upperLabel: "16pt"
+                )
 
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(String(format: appStore.localized(.folderDropZoneSizeWithDefault), AppStore.defaultFolderDropZoneScale))
-                    Spacer()
-                    layoutModeScopeControl()
-                }
-                Slider(value: scopedFolderDropZoneScaleBinding(),
-                       in: AppStore.folderDropZoneScaleRange,
-                       step: 0.05)
-                HStack {
-                    Text(String(format: "%.1fx", AppStore.folderDropZoneScaleRange.lowerBound))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text(String(format: "%.2fx", appStore.scopedFolderDropZoneScale(for: selectedAppearanceLayoutMode)))
-                        .font(.footnote.monospacedDigit())
-                    Spacer()
-                    Text(String(format: "%.1fx", AppStore.folderDropZoneScaleRange.upperBound))
-                        .font(.footnote)
+                SettingsSliderRow(
+                    title: appStore.localized(.iconLabelFontWeight),
+                    value: Binding(
+                        get: {
+                            let options = AppStore.IconLabelFontWeightOption.allCases
+                            return Double(options.firstIndex(of: appStore.iconLabelFontWeight) ?? 0)
+                        },
+                        set: { newValue in
+                            let options = AppStore.IconLabelFontWeightOption.allCases
+                            appStore.iconLabelFontWeight = options[Int(newValue.rounded())]
+                        }
+                    ),
+                    range: 0...Double(AppStore.IconLabelFontWeightOption.allCases.count - 1),
+                    step: 1
+                ) {
+                    Text("\(appStore.iconLabelFontWeight.numericWeight)")
+                        .font(.callout.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
-                SettingsHint(appStore.localized(.folderDropZoneSizeHint))
-            }
 
-            SettingsSliderRow(
-                title: appStore.localized(.pageIndicatorOffsetLabel),
-                value: scopedPageIndicatorOffsetBinding(),
-                range: 0...80,
-                lowerLabel: "0",
-                centerLabel: String(format: "%.0f", appStore.scopedPageIndicatorOffset(for: selectedAppearanceLayoutMode)),
-                upperLabel: "80",
-                isEnabled: !selectedScopePerDisplayEnabled
-            ) {
-                if !selectedScopePerDisplayEnabled {
-                    layoutModeScopeControl()
-                }
-            }
-
-            SettingsSliderRow(
-                title: appStore.localized(.pageIndicatorTopPaddingLabel),
-                value: scopedPageIndicatorTopPaddingBinding(),
-                range: AppStore.pageIndicatorTopPaddingRange,
-                lowerLabel: String(format: "%.0f", AppStore.pageIndicatorTopPaddingRange.lowerBound),
-                centerLabel: String(format: "%.0f", appStore.scopedPageIndicatorTopPadding(for: selectedAppearanceLayoutMode)),
-                upperLabel: String(format: "%.0f", AppStore.pageIndicatorTopPaddingRange.upperBound),
-                isEnabled: !selectedScopePerDisplayEnabled
-            ) {
-                if !selectedScopePerDisplayEnabled {
-                    layoutModeScopeControl()
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                let perDisplayBinding = scopedPerDisplayIndicatorBinding()
-                Button {
-                    perDisplayBinding.wrappedValue.toggle()
-                } label: {
-                    HStack(spacing: 8) {
-                        Text(appStore.localized(.perDisplayIndicatorPositionTitle))
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(appStore.localized(.iconLabelColorTitle))
                             .font(.headline)
                         Spacer()
-                        layoutModeScopeControl(width: 116)
-                        Toggle("", isOn: perDisplayBinding)
-                            .labelsHidden()
-                            .toggleStyle(.switch)
-                            .allowsHitTesting(false)
+                        Toggle(appStore.localized(.iconLabelColorFollowSystem), isOn: $iconLabelColorFollowSystem)
+                            .toggleStyle(.checkbox)
+                        if !iconLabelColorFollowSystem {
+                            ColorPicker("", selection: $iconLabelColorSelection, supportsOpacity: false)
+                                .labelsHidden()
+                        }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(PressFeedbackRowButtonStyle(enabled: true, pressScale: 0.98))
-                SettingsHint(appStore.localized(.perDisplayIndicatorPositionDescription))
-
-                if selectedScopePerDisplayEnabled {
-                    HStack {
-                        Button(appStore.localized(.applyDefaultsToCurrentDisplay)) {
-                            if let screenID = currentIndicatorScreenID {
-                                appStore.applyIndicatorDefaults(to: screenID, mode: selectedAppearanceLayoutMode)
-                            }
-                        }
-                        .buttonStyle(.bordered)
-                        Spacer()
+                .onAppear { syncIconLabelColorState() }
+                .onChange(of: iconLabelColorFollowSystem) { _, followSystem in
+                    if followSystem {
+                        appStore.iconLabelColorHex = ""
+                    } else {
+                        appStore.iconLabelColorHex = iconLabelColorHexValue(from: iconLabelColorSelection)
                     }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(indicatorScreenEntries) { entry in
-                            indicatorOverrideCard(for: entry)
-                        }
-                    }
+                }
+                .onChange(of: iconLabelColorSelection) { _, newColor in
+                    guard !iconLabelColorFollowSystem else { return }
+                    appStore.iconLabelColorHex = iconLabelColorHexValue(from: newColor)
                 }
             }
 
+            SettingsGroupBox(title: appStore.localized(.appearanceGroupIconInteraction)) {
+                SettingsToggleRow(title: appStore.localized(.hoverMagnification), isOn: $appStore.enableHoverMagnification)
+                SettingsSliderRow(
+                    title: appStore.localized(.hoverMagnificationScale),
+                    value: $appStore.hoverMagnificationScale,
+                    range: AppStore.hoverMagnificationRange,
+                    lowerLabel: String(format: "%.2fx", AppStore.hoverMagnificationRange.lowerBound),
+                    centerLabel: String(format: "%.2fx", appStore.hoverMagnificationScale),
+                    upperLabel: String(format: "%.2fx", AppStore.hoverMagnificationRange.upperBound),
+                    isEnabled: appStore.enableHoverMagnification,
+                    dimsWhenDisabled: false
+                )
+                SettingsToggleRow(title: appStore.localized(.activePressEffect), isOn: $appStore.enableActivePressEffect)
+                SettingsSliderRow(
+                    title: appStore.localized(.activePressScale),
+                    value: $appStore.activePressScale,
+                    range: AppStore.activePressScaleRange,
+                    lowerLabel: String(format: "%.2fx", AppStore.activePressScaleRange.lowerBound),
+                    centerLabel: String(format: "%.2fx", appStore.activePressScale),
+                    upperLabel: String(format: "%.2fx", AppStore.activePressScaleRange.upperBound),
+                    isEnabled: appStore.enableActivePressEffect,
+                    dimsWhenDisabled: false
+                )
+            }
+
+            appearanceResetFooter
+        }
+    }
+
+    var appearanceFolderSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            appearanceScopeHeader
+
+            SettingsGroupBox(title: appStore.localized(.appearanceGroupFolder)) {
+                // 高清文件夹预览只有 CA 渲染器会读取（CAGridViewRepresentable），
+                // 传统渲染器路径没有对应实现——不标注的话开关在传统渲染器下是静默无效的。
+                VStack(alignment: .leading, spacing: 6) {
+                    SettingsToggleRow(
+                        title: appStore.localized(.folderPreviewHighResTitle),
+                        isOn: $appStore.enableHighResFolderPreviews
+                    ) {
+                        SettingsModeBadge(text: appStore.localized(.caRendererBadge))
+                    }
+                    SettingsHint(appStore.localized(.folderPreviewHighResHint))
+                }
+                .settingsEnabled(appStore.useCAGridRenderer)
+
+                SettingsToggleRow(
+                    title: appStore.localized(.folderQuickLaunchTitle),
+                    isOn: $appStore.folderQuickLaunchEnabled
+                ) {
+                    SettingsModeBadge(text: appStore.localized(.caRendererBadge))
+                    SettingsInfoAffordance(isPresented: $showFolderQuickLaunchInfoPopover, width: 280) {
+                        SettingsInfoBody(text: appStore.localized(.folderQuickLaunchHint))
+                    }
+                }
+                .settingsEnabled(appStore.useCAGridRenderer)
+            }
+
+            // 文件夹布局模式卡自带卡片外框，放在组盒外面避免双层嵌套。
             folderLayoutModeCard
+
+            SettingsGroupBox(title: appStore.localized(.appearanceGroupFolderWindow)) {
+                // 文件夹窗口宽高只有窗口模式会读：全屏模式下整组隐藏，而不是灰着占位。
+                if !appStore.isFullscreenMode {
+                    SettingsSliderRow(
+                        title: appStore.localized(.folderWindowWidth),
+                        value: $appStore.folderPopoverWidthFactor,
+                        range: AppStore.folderPopoverWidthRange,
+                        lowerLabel: String(format: "%.0f%%", AppStore.folderPopoverWidthRange.lowerBound * 100),
+                        upperLabel: String(format: "%.0f%%", AppStore.folderPopoverWidthRange.upperBound * 100)
+                    ) {
+                        Text(String(format: "%.0f%%", appStore.folderPopoverWidthFactor * 100))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    SettingsSliderRow(
+                        title: appStore.localized(.folderWindowHeight),
+                        value: $appStore.folderPopoverHeightFactor,
+                        range: AppStore.folderPopoverHeightRange,
+                        lowerLabel: String(format: "%.0f%%", AppStore.folderPopoverHeightRange.lowerBound * 100),
+                        upperLabel: String(format: "%.0f%%", AppStore.folderPopoverHeightRange.upperBound * 100)
+                    ) {
+                        Text(String(format: "%.0f%%", appStore.folderPopoverHeightFactor * 100))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    SettingsHint(appStore.localized(.folderWindowSizeHint))
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(String(format: appStore.localized(.folderDropZoneSizeWithDefault), AppStore.defaultFolderDropZoneScale))
+                    Slider(value: scopedFolderDropZoneScaleBinding(),
+                           in: AppStore.folderDropZoneScaleRange,
+                           step: 0.05)
+                    HStack {
+                        Text(String(format: "%.1fx", AppStore.folderDropZoneScaleRange.lowerBound))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text(String(format: "%.2fx", appStore.scopedFolderDropZoneScale(for: selectedAppearanceLayoutMode)))
+                            .font(.footnote.monospacedDigit())
+                        Spacer()
+                        Text(String(format: "%.1fx", AppStore.folderDropZoneScaleRange.upperBound))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    SettingsHint(appStore.localized(.folderDropZoneSizeHint))
+                }
+            }
 
             appearanceResetFooter
         }

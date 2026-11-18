@@ -64,6 +64,38 @@ struct SettingsHint: View {
     }
 }
 
+/// 关联设置分组容器：把一组功能上相互关联的行（开关 + 它的联动滑杆、说明等）
+/// 套进同一个浅色外框，配一个组标题。
+/// 之前这些行平铺在一起，开关和它的倍率滑杆隔着十几行，看不出归属；
+/// 外框 + 标题让「这堆设置是一件事」可以直接看出来，组内顺序 = 先开关后调参。
+struct SettingsGroupBox<Content: View>: View {
+    let title: String
+    let content: Content
+
+    init(title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(title)
+                .font(.headline)
+            content
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(nsColor: .quaternarySystemFill).opacity(0.55))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color(nsColor: .separatorColor).opacity(0.2), lineWidth: 0.7)
+        )
+    }
+}
+
 /// 「这条设置只在某个布局模式下生效」的标签。
 ///
 /// 之前这类设置只是静静地变灰/禁用：全屏时文件夹窗口尺寸滑不动、

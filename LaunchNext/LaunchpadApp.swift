@@ -88,6 +88,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSGestureR
         appStore.startAutoRescan()
 
         bindAppearancePreference()
+        bindSettingsSheetFocus()
         bindControllerPreference()
         bindControllerMenuToggle()
         bindSystemUIVisibility()
@@ -1408,7 +1409,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSGestureR
             .store(in: &cancellables)
     }
 
-    
+    /// 设置页 sheet 弹出后确保 sheet 持有 key。
+    /// 偶发复现路径：打开动画的 finalizeShow 异步 makeKey 晚于 sheet 挂载执行，
+    /// 面板把 key 从 sheet 手里抢走 → sheet 收不到点击（侧栏菜单点不动），
+    /// 关闭启动台重开才恢复。此处做双保险：sheet 挂载后短暂延迟检查一次，
+    /// key 不在 sheet 上就交回去。
+    private func bindSettingsSheetFocus() {
+        appStore.$isSetting
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] isSetting in
+                guard isSetting else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    guard let self,
+                          self.appStore.isSetting,
+                          let panel = self.window,
+                          let sheet = panel.attachedSheet else { return }
+                    if NSApp.keyWindow !== sheet {
+                        sheet.makeKeyAndOrderFront(nil)
+                        NSApp.activate(ignoringOtherApps: true)
+                    }
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+
 
     private func bindControllerPreference() {
         appStore.$gameControllerEnabled
@@ -1658,6 +1684,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSGestureR
             self.updateSystemUIVisibility()
             // Ensure focus after animation completes
             DispatchQueue.main.async {
+                // 设置页以 sheet 形式挂在面板上：若 sheet 已经弹出，面板不能再夺回
+                // key 状态，否则 sheet 失去响应（侧栏菜单点不动，重开才恢复）。
+                guard !self.appStore.isSetting else { return }
                 self.window?.makeKey()
                 self.window?.makeMain()
             }

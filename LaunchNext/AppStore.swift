@@ -317,20 +317,6 @@ final class AppStore: ObservableObject {
         }
     }
 
-    enum SidebarIconPreset: String, CaseIterable, Identifiable {
-        case large
-        case medium
-
-        var id: String { rawValue }
-        
-        var localizationKeyTitle: LocalizationKey {
-            switch self {
-            case .large: return .sidebarIconSizeLarge
-            case .medium: return .sidebarIconSizeMedium
-            }
-        }
-    }
-
     enum IconLabelFontWeightOption: String, CaseIterable, Identifiable {
         case light
         case regular
@@ -357,6 +343,17 @@ final class AppStore: ObservableObject {
             case .medium: return "Medium"
             case .semibold: return "Semibold"
             case .bold: return "Bold"
+            }
+        }
+
+        /// CSS/OpenType 风格的字重数值（300–700），设置滑块直接显示这个数字。
+        var numericWeight: Int {
+            switch self {
+            case .light: return 300
+            case .regular: return 400
+            case .medium: return 500
+            case .semibold: return 600
+            case .bold: return 700
             }
         }
     }
@@ -425,7 +422,6 @@ final class AppStore: ObservableObject {
     static let backgroundMaskDarkKey = "launchpadBackgroundMaskDark"
     static let folderPreviewHighResKey = "folderPreviewHighRes"
     static let folderQuickLaunchEnabledKey = "folderQuickLaunchEnabled"
-    static let sidebarIconPresetKey = "sidebarIconPreset"
     static let uninstallToolAppPathKey = "uninstallToolAppPath"
     static let pageIndicatorPerDisplayEnabledKey = "pageIndicatorPerDisplayEnabled"
     static let pageIndicatorPerDisplayOverridesKey = "pageIndicatorPerDisplayOverrides"
@@ -556,9 +552,11 @@ final class AppStore: ObservableObject {
     private static let defaultFolderPopoverHeight: Double = 0.85
     static let folderDropZoneScaleRange: ClosedRange<Double> = 0.6...2.0
     static let defaultFolderDropZoneScale: Double = 1.6
-    private static let defaultPageIndicatorOffset: Double = 27.0
+    // 页码指示器位置设置项已移除：默认 0（圆点贴窗口底边、紧贴网格），
+    // 归一化时会强制归零存量值，仅按显示器覆盖仍可自定义。
+    private static let defaultPageIndicatorOffset: Double = 0
     static let pageIndicatorTopPaddingRange: ClosedRange<Double> = 0...60
-    static let defaultPageIndicatorTopPadding: Double = 12
+    static let defaultPageIndicatorTopPadding: Double = 0
     private static let defaultAnimationDuration: Double = 0.3
     static let windowAnimationDurationRange: ClosedRange<Double> = 0.1...0.5
     private static let defaultWindowAnimationDuration: Double = 0.25
@@ -795,21 +793,7 @@ final class AppStore: ObservableObject {
         }
     }
 
-    @Published var sidebarIconPreset: SidebarIconPreset = {
-        if let raw = UserDefaults.standard.string(forKey: AppStore.sidebarIconPresetKey),
-           let preset = SidebarIconPreset(rawValue: raw) {
-            return preset
-        }
-        return .large
-    }() {
-        didSet {
-            guard sidebarIconPreset != oldValue else { return }
-            UserDefaults.standard.set(sidebarIconPreset.rawValue, forKey: Self.sidebarIconPresetKey)
-        }
-    }
-
     private static func writeDefaultAppearancePreferences(to defaults: UserDefaults) {
-        defaults.set(SidebarIconPreset.large.rawValue, forKey: Self.sidebarIconPresetKey)
         defaults.set(AppearancePreference.system.rawValue, forKey: "appearancePreference")
         defaults.set(BackgroundStyle.glass.rawValue, forKey: Self.backgroundStyleKey)
         defaults.set(false, forKey: Self.backgroundImageEnabledKey)
@@ -863,13 +847,6 @@ final class AppStore: ObservableObject {
 
     private func reloadAppearancePreferencesFromDefaults() {
         let defaults = UserDefaults.standard
-
-        if let raw = defaults.string(forKey: Self.sidebarIconPresetKey),
-           let preset = SidebarIconPreset(rawValue: raw) {
-            sidebarIconPreset = preset
-        } else {
-            sidebarIconPreset = .large
-        }
 
         if let raw = defaults.string(forKey: "appearancePreference"),
            let preference = AppearancePreference(rawValue: raw) {
@@ -1193,11 +1170,13 @@ final class AppStore: ObservableObject {
     }
 
     private static func normalizedAppearanceSettings(_ settings: ModeScopedAppearanceSettings) -> ModeScopedAppearanceSettings {
+        // 页码指示器全局位置设置项已移除：无论存量值是多少，基础位置一律归零；
+        // 按显示器覆盖（pageIndicatorOverrides）不受影响，仍可单独调整。
         ModeScopedAppearanceSettings(iconScale: settings.iconScale,
                                      iconLabelFontSize: settings.iconLabelFontSize,
                                      folderDropZoneScale: clampFolderDropZoneScale(settings.folderDropZoneScale),
-                                     pageIndicatorOffset: settings.pageIndicatorOffset,
-                                     pageIndicatorTopPadding: clampPageIndicatorTopPadding(settings.pageIndicatorTopPadding),
+                                     pageIndicatorOffset: 0,
+                                     pageIndicatorTopPadding: 0,
                                      pageIndicatorPerDisplayEnabled: settings.pageIndicatorPerDisplayEnabled,
                                      pageIndicatorOverrides: settings.pageIndicatorOverrides)
     }
@@ -2915,14 +2894,17 @@ final class AppStore: ObservableObject {
             UserDefaults.standard.set(false, forKey: "showFPSOverlay")
         }
         if defaults.object(forKey: "pageIndicatorOffset") == nil {
-            defaults.set(27.0, forKey: "pageIndicatorOffset")
+            defaults.set(Self.defaultPageIndicatorOffset, forKey: "pageIndicatorOffset")
         }
 
         if let storedDualModeAppearance = Self.loadDualModeAppearanceSettings(from: defaults) {
             self.dualModeAppearanceSettings = storedDualModeAppearance
         } else {
             let legacy = Self.legacyAppearanceSettings(from: defaults)
-            let migrated = DualModeAppearanceSettings(fullscreen: legacy, compact: legacy)
+            // 旧版迁移也走归一化：指示器位置设置项已移除，迁移结果强制归零。
+            let migrated = Self.normalizedDualModeAppearanceSettings(
+                DualModeAppearanceSettings(fullscreen: legacy, compact: legacy)
+            )
             self.dualModeAppearanceSettings = migrated
             if let data = try? JSONEncoder().encode(migrated) {
                 defaults.set(data, forKey: Self.dualModeAppearanceSettingsKey)
@@ -4903,7 +4885,6 @@ final class AppStore: ObservableObject {
     func resetAppearanceSettings() {
         let defaults = UserDefaults.standard
         let keysToClear: [String] = [
-            Self.sidebarIconPresetKey,
             "appearancePreference",
             Self.backgroundStyleKey,
             Self.backgroundImageEnabledKey,

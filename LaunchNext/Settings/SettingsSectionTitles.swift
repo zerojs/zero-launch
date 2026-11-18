@@ -20,7 +20,15 @@ extension SettingsView {
             Text(appStore.localized(.customTitleHint))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            
+
+            // 「使用本地化应用名称」管的是标题语言而不是外观，归属本页。
+            // AppInfo.from 在扫描/导入时读取该开关，已显示的标题不会立即刷新，
+            // 所以 hint 必须写明生效范围，避免用户切换后以为开关坏了。
+            VStack(alignment: .leading, spacing: 6) {
+                SettingsToggleRow(title: appStore.localized(.useLocalizedThirdPartyTitles), isOn: $appStore.useLocalizedThirdPartyTitles)
+                SettingsHint(appStore.localized(.localizedTitlesHint))
+            }
+
             HStack(){
                 Text(appStore.localized(.customTitleOnly))
                     .font(.callout)

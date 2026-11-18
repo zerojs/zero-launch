@@ -573,7 +573,6 @@ extension SettingsView {
                     keys.insert(AppStore.gestureShowAllInputDevicesKey)
                 }
                 if appearanceCheckbox.state == .on {
-                    keys.insert(AppStore.sidebarIconPresetKey)
                     keys.insert(AppStore.backgroundStyleKey)
                     keys.insert(AppStore.backgroundImageEnabledKey)
                     keys.insert(AppStore.backgroundImageSourceKey)

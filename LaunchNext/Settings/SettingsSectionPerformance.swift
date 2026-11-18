@@ -89,6 +89,13 @@ extension SettingsView {
                         .foregroundStyle(.secondary)
                 }
 
+                // 内存占用是活数据：TimelineView 每 2s 重算一次 phys_footprint，
+                // 而不是只在视图出现时读一次（那样展示的是打开设置页瞬间的死快照）。
+                TimelineView(.periodic(from: .now, by: 2)) { _ in
+                    cacheCountRow(title: appStore.localized(.performanceMemoryUsageLabel),
+                                  valueText: currentMemoryUsageValue())
+                }
+
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                     cacheCountRow(title: appStore.localized(.performanceCacheIconLabel),
                                   valueText: isLeanMode ? appStore.localized(.performanceCacheIconsDisabled) : "\(stats.iconCacheSize)")
@@ -120,10 +127,24 @@ extension SettingsView {
             showPerformanceRestartPrompt = true
         }
         .alert(appStore.localized(.performanceModeRestartTitle), isPresented: $showPerformanceRestartPrompt) {
+            Button(appStore.localized(.restartNowButton)) {
+                Self.relaunchApp()
+            }
             Button(appStore.localized(.okButton), role: .cancel) {}
         } message: {
             Text(appStore.localized(.performanceModeRestartMessage))
         }
+    }
+
+    /// 退出并重新拉起当前 app（性能模式切换后使用）。
+    /// 用 `Bundle.main.bundleURL` 而不是硬编码 /Applications——开发期部署在别的位置也能正确重启。
+    /// 顺序不能反：先 `open -n` 派发新实例，再 terminate 旧实例（terminate 之后没有机会再执行任何代码）。
+    private static func relaunchApp() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-n", Bundle.main.bundleURL.path]
+        try? process.run()
+        NSApp.terminate(nil)
     }
 
     func currentMemoryUsageValue() -> String {

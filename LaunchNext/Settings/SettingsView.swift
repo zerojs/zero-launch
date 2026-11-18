@@ -122,18 +122,14 @@ struct SettingsView: View {
     }
 
     // Sidebar sizing presets
+    // 「侧栏图标大小」设置项已移除（它只影响设置页侧栏自身，大/中两档差异无感知），
+    // 固定使用「大」档数值。
     var sidebarIconFrame: CGFloat {
-        switch appStore.sidebarIconPreset {
-        case .large: return 26
-        case .medium: return 24
-        }
+        26
     }
 
     var sidebarIconFontSize: CGFloat {
-        switch appStore.sidebarIconPreset {
-        case .large: return 13
-        case .medium: return 12
-        }
+        13
     }
 
     /// 侧栏条目使用的字号。改这里要同步 `sidebarWidthForFullLabels` 里的测量，
@@ -174,10 +170,7 @@ struct SettingsView: View {
     }
 
     var sidebarRowVerticalPadding: CGFloat {
-        switch appStore.sidebarIconPreset {
-        case .large: return 2
-        case .medium: return 1
-        }
+        2
     }
 
     var sidebarHeaderIconFrame: CGFloat {
@@ -185,10 +178,7 @@ struct SettingsView: View {
     }
 
     var sidebarHeaderCornerRadius: CGFloat {
-        switch appStore.sidebarIconPreset {
-        case .large: return 3
-        case .medium: return 3
-        }
+        3
     }
 
     var body: some View {
@@ -337,7 +327,7 @@ struct SettingsView: View {
             }
         }
         .onChange(of: appStore.isFullscreenMode) { _, _ in
-            guard currentSubpage(for: selectedEntry) == .appearance else { return }
+            guard currentSubpage(for: selectedEntry) == .appearanceWindow else { return }
             syncLayoutModePreviewScopeToRuntime()
         }
         .onChange(of: selectedEntry) { _, newEntry in
@@ -640,7 +630,7 @@ struct SettingsView: View {
         var subpages: [SettingsSection] {
             switch self {
             case .general: return [.general]
-            case .appearanceAndPerformance: return [.appearance, .appearanceLayout, .appearanceBackground, .performance]
+            case .appearanceAndPerformance: return [.appearanceWindow, .appearanceIcons, .appearanceFolder, .appearanceBackground, .performance]
             case .backup: return [.backup]
             case .shortcuts: return [.shortcuts]
             case .soundAndController: return [.sound, .gameController]
@@ -669,7 +659,7 @@ struct SettingsView: View {
         var iconSection: SettingsSection {
             switch self {
             case .general: return .general
-            case .appearanceAndPerformance: return .appearance
+            case .appearanceAndPerformance: return .appearanceWindow
             case .backup: return .backup
             case .shortcuts: return .shortcuts
             case .soundAndController: return .sound
@@ -686,9 +676,12 @@ struct SettingsView: View {
 
     enum SettingsSection: String, CaseIterable, Identifiable {
         case general
-        case appearance
-        // 外观页拆成顶部 tab：显示与行为 / 布局与尺寸 / 背景与效果
-        case appearanceLayout
+        // 外观页拆成顶部 tab：窗口与翻页 / 图标 / 文件夹 / 背景与效果。
+        // 按「看得见的对象」切分：图标的大小/网格/标签/交互必须同 tab，
+        // 之前拆在「显示与行为」「布局与尺寸」两个 tab，调图标外观要来回跳。
+        case appearanceWindow
+        case appearanceIcons
+        case appearanceFolder
         case appearanceBackground
         case performance
         case titles
@@ -732,28 +725,36 @@ struct SettingsView: View {
                                .developmentEnableCLICodeTitle, .appearanceModeTitle,
                                .hotCornerEnabledTitle, .gestureEnabledTitle]
                 )
-            case .appearance:
+            case .appearanceWindow:
                 return Meta(
-                    title: .appearanceGroupDisplayAndBehavior,
-                    iconName: "paintbrush",
+                    title: .appearanceTabWindow,
+                    iconName: "macwindow",
                     gradientColors: [Color(red: 0.73, green: 0.25, blue: 0.96), Color(red: 0.98, green: 0.43, blue: 0.80)],
-                    keywords: [.classicMode, .showLabels, .useLocalizedThirdPartyTitles, .predictDrop,
-                               .enableAnimations, .followScrollPagingTitle, .hideDockOption, .hideMenuBarOption,
-                               .rememberPageTitle, .hoverMagnification, .activePressEffect, .folderPreviewHighResTitle,
-                               .folderQuickLaunchTitle, .windowOpenAnimationTitle, .windowAnimationDurationLabel,
-                               .animationDurationLabel, .hoverMagnificationScale, .activePressScale, .labelFontSize,
-                               .iconLabelFontWeight, .iconLabelColorTitle, .scrollSensitivity,
-                               .resetAppearanceSettings, .appearanceScopeFullscreenOnly]
+                    keywords: [.displayModeTitle, .displayModeFullscreen, .displayModeWindow, .hideDockOption,
+                               .hideMenuBarOption, .enableAnimations, .windowOpenAnimationTitle,
+                               .windowAnimationDurationLabel, .animationDurationLabel, .predictDrop,
+                               .followScrollPagingTitle, .scrollSensitivity, .rememberPageTitle,
+                               .perDisplayIndicatorPositionTitle, .resetAppearanceSettings,
+                               .caRendererBadge, .legacyRendererBadge]
                 )
-            case .appearanceLayout:
+            case .appearanceIcons:
                 return Meta(
-                    title: .appearanceGroupLayoutAndSize,
-                    iconName: "square.grid.3x3",
+                    title: .appearanceTabIcons,
+                    iconName: "square.grid.2x2",
                     gradientColors: [Color(red: 0.73, green: 0.25, blue: 0.96), Color(red: 0.98, green: 0.43, blue: 0.80)],
-                    keywords: [.sidebarIconSizeTitle, .iconSize, .iconsPerRow, .rowsPerPage, .iconHorizontalSpacing,
-                               .iconVerticalSpacing, .folderWindowWidth, .folderWindowHeight, .folderDropZoneSizeWithDefault,
-                               .pageIndicatorOffsetLabel, .pageIndicatorTopPaddingLabel, .perDisplayIndicatorPositionTitle,
-                               .resetAppearanceSettings, .appearanceScopeCompactOnly]
+                    keywords: [.iconSize, .iconsPerRow, .rowsPerPage, .iconHorizontalSpacing,
+                               .iconVerticalSpacing, .showLabels, .labelFontSize, .iconLabelFontWeight,
+                               .iconLabelColorTitle, .hoverMagnification, .hoverMagnificationScale,
+                               .activePressEffect, .activePressScale, .resetAppearanceSettings]
+                )
+            case .appearanceFolder:
+                return Meta(
+                    title: .appearanceGroupFolder,
+                    iconName: "folder",
+                    gradientColors: [Color(red: 0.73, green: 0.25, blue: 0.96), Color(red: 0.98, green: 0.43, blue: 0.80)],
+                    keywords: [.folderWindowWidth, .folderWindowHeight, .folderDropZoneSizeWithDefault,
+                               .folderLayoutTitle, .folderQuickLaunchTitle, .folderPreviewHighResTitle,
+                               .resetAppearanceSettings]
                 )
             case .appearanceBackground:
                 return Meta(
@@ -776,7 +777,8 @@ struct SettingsView: View {
                     title: .settingsSectionTitles,
                     iconName: "text.badge.plus",
                     gradientColors: [Color(red: 0.95, green: 0.37, blue: 0.32), Color(red: 0.98, green: 0.55, blue: 0.44)],
-                    keywords: [.customTitleAddFromFolder, .customTitleOnly, .customTitleDefaultFormat]
+                    keywords: [.customTitleAddFromFolder, .customTitleOnly, .customTitleDefaultFormat,
+                               .useLocalizedThirdPartyTitles]
                 )
             case .appSources:
                 return Meta(
@@ -975,17 +977,24 @@ struct SettingsView: View {
     @ViewBuilder
     func scrollContent(for section: SettingsSection) -> some View {
         switch section {
-        case .appearance:
-            appearanceBehaviorSection
+        case .appearanceWindow:
+            appearanceWindowSection
                 .padding(.top, 12)
                 .padding(.bottom, 20)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .onAppear { syncLayoutModePreviewScopeToRuntime() }
-        case .appearanceLayout:
-            appearanceLayoutSection
+        case .appearanceIcons:
+            appearanceIconsSection
                 .padding(.top, 12)
                 .padding(.bottom, 20)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .onAppear { syncLayoutModePreviewScopeToRuntime() }
+        case .appearanceFolder:
+            appearanceFolderSection
+                .padding(.top, 12)
+                .padding(.bottom, 20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .onAppear { syncLayoutModePreviewScopeToRuntime() }
         case .appearanceBackground:
             appearanceBackgroundSection
                 .padding(.top, 12)
@@ -1011,10 +1020,12 @@ struct SettingsView: View {
         switch section {
         case .general:
             generalSection
-        case .appearance:
-            appearanceBehaviorSection
-        case .appearanceLayout:
-            appearanceLayoutSection
+        case .appearanceWindow:
+            appearanceWindowSection
+        case .appearanceIcons:
+            appearanceIconsSection
+        case .appearanceFolder:
+            appearanceFolderSection
         case .appearanceBackground:
             appearanceBackgroundSection
         case .performance:
