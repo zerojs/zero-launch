@@ -168,7 +168,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSGestureR
 
         stopCLIEndpointMonitor()
 
-        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "io.roversx.launchnext.cli.endpoint-monitor"))
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "io.zerojs.zerolaunch.cli.endpoint-monitor"))
         var failureCount = 0
         timer.schedule(deadline: .now() + .seconds(1), repeating: .seconds(1))
         timer.setEventHandler { [weak self] in
@@ -298,12 +298,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSGestureR
 
     private func makePreferredModelContainer() -> ModelContainer? {
         do {
-            let fm = FileManager.default
-            let appSupport = try fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-            let storeDir = appSupport.appendingPathComponent("LaunchNext", isDirectory: true)
-            if !fm.fileExists(atPath: storeDir.path) {
-                try fm.createDirectory(at: storeDir, withIntermediateDirectories: true)
-            }
+            let storeDir = AppIdentity.appSupportDirectory()
             let storeURL = storeDir.appendingPathComponent("Data.store")
             let configuration = ModelConfiguration(url: storeURL)
             return try ModelContainer(for: TopItemData.self, PageEntryData.self, configurations: configuration)

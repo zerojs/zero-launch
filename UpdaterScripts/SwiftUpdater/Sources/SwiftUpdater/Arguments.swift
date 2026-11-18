@@ -3,6 +3,7 @@ import Foundation
 struct UpdaterArguments {
     var tag: String?
     var assetPattern: String
+    var repoSlug: String?
     var installDirectory: URL?
     var downloadOnly: Bool
     var emitJSON: Bool
@@ -11,7 +12,7 @@ struct UpdaterArguments {
     var resetLanguage: Bool
     var holdWindow: Bool
 
-    static let defaultAssetPattern = "LaunchNext.*\\.zip"
+    static let defaultAssetPattern = "ZeroLaunch.*\\.zip"
 }
 
 enum ArgumentError: Error {
@@ -30,6 +31,7 @@ func parseArguments() throws -> UpdaterArguments {
     var result = UpdaterArguments(
         tag: nil,
         assetPattern: UpdaterArguments.defaultAssetPattern,
+        repoSlug: nil,
         installDirectory: nil,
         downloadOnly: false,
         emitJSON: false,
@@ -47,6 +49,9 @@ func parseArguments() throws -> UpdaterArguments {
         case "--asset-pattern":
             guard let value = parser.next() else { throw ArgumentError.invalidValue(token) }
             result.assetPattern = value
+        case "--repo":
+            guard let value = parser.next() else { throw ArgumentError.invalidValue(token) }
+            result.repoSlug = value
         case "--install-dir":
             guard let value = parser.next() else { throw ArgumentError.invalidValue(token) }
             result.installDirectory = URL(fileURLWithPath: value)

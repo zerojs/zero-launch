@@ -26,7 +26,7 @@ BUILT_PRODUCTS_DIR="$(xcodebuild \
   | awk -F ' = ' '/^[[:space:]]*BUILT_PRODUCTS_DIR = / { print $2 }' \
   | tail -n 1)"
 
-APP_PATH="${BUILT_PRODUCTS_DIR}/LaunchNext.app"
+APP_PATH="${BUILT_PRODUCTS_DIR}/ZeroLaunch.app"
 BUILD_DIR="$(cd "${BUILT_PRODUCTS_DIR}/../.." && pwd)"
 RELEASE_DIR="${BUILD_DIR}/dist"
 
@@ -44,7 +44,18 @@ if [[ -z "${VERSION}" ]]; then
   exit 1
 fi
 
-ZIP_NAME="LaunchNext${VERSION}.zip"
+# —— ad-hoc 签名（免费路线，无需付费开发者账号）——
+# 未签名/ ad-hoc 签名的 app 下载后会带 quarantine 标记，Gatekeeper 会拦。
+# 这里用 ad-hoc（`-`）对 .app 重新签名，让本机与信任来源能直接跑；
+# 分发时用户仍需清一次隔离标记（见脚本结尾的提示）。
+echo "Ad-hoc signing the app bundle..."
+codesign --force --deep --sign - "${APP_PATH}" 2>&1 || {
+  echo "warning: ad-hoc signing failed; continuing with the unsigned build" >&2
+}
+
+# 名字必须和 AppIdentity.releaseAssetPattern（`ZeroLaunch.*\.zip`）匹配，
+# 内置 updater 按这个规则在 release 里挑资产。
+ZIP_NAME="ZeroLaunch${VERSION}.zip"
 ZIP_PATH="${RELEASE_DIR}/${ZIP_NAME}"
 CHECKSUMS_PATH="${RELEASE_DIR}/checksums.txt"
 
@@ -67,3 +78,11 @@ echo ""
 echo "Upload these assets to the GitHub release tagged ${VERSION}:"
 echo "  ${ZIP_NAME}"
 echo "  checksums.txt"
+echo ""
+echo "======================================================"
+echo "NOTE: this build is ad-hoc signed, NOT notarized."
+echo "macOS Gatekeeper may block it on first launch."
+echo "Users can unblock it with:"
+echo "  sudo xattr -r -d com.apple.quarantine /Applications/ZeroLaunch.app"
+echo "Or: right-click the app → Open → confirm \"Open\"."
+echo "======================================================"

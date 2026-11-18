@@ -149,16 +149,19 @@ extension SettingsView {
 
             HStack(spacing: 12) {
                 glassButton(title: appStore.localized(.aboutProjectLink), systemImage: "arrow.up.right.square") {
-                    openExternalLink("https://github.com/RoversX/LaunchNext")
+                    openExternalLink(AppIdentity.releasesPageURL?.absoluteString
+                        ?? "https://github.com")
                 }
                 glassButton(title: appStore.localized(.aboutReportBug), systemImage: "exclamationmark.bubble") {
-                    openExternalLink("https://github.com/RoversX/LaunchNext/issues")
+                    openExternalLink((AppIdentity.githubRepoSlug.map { "https://github.com/\($0)/issues" })
+                        ?? "https://github.com")
                 }
                 glassButton(title: appStore.localized(.aboutContribute), systemImage: "hands.sparkles") {
-                    openExternalLink("https://github.com/RoversX/LaunchNext")
+                    openExternalLink(AppIdentity.releasesPageURL?.absoluteString
+                        ?? "https://github.com")
                 }
                 glassButton(title: appStore.localized(.aboutBlog), systemImage: "globe") {
-                    openExternalLink("https://blog.closex.org")
+                    openExternalLink("https://www.zerojs.cn")
                 }
             }
             .frame(maxWidth: .infinity)

@@ -118,25 +118,25 @@ enum LaunchNextCLI {
         ZeroLaunch CLI
 
         Usage:
-          launchnext
-          launchnext --gui
-          launchnext --tui
-          launchnext --cli list
-          launchnext --cli snapshot
-          launchnext --cli history
-          launchnext --cli history --limit 20
-          launchnext --cli example
-          launchnext --cli search --query "safari"
-          launchnext --cli search safari
-          launchnext --cli create-folder --path "/Applications/Mail.app" --path "/Applications/Notes.app" [--name "Utilities"] [--index 12] [--dry-run]
-          launchnext --cli move --source normal-app --path \"/Applications/Safari.app\" --to normal-index --index 12 [--dry-run]
-          launchnext --cli move --source normal-app --path \"/Applications/Safari.app\" --to folder-append --target-folder-id <folder-id> [--dry-run]
-          launchnext --cli move --source folder-app --folder-id <folder-id> --path \"/Applications/Safari.app\" --to folder-index --target-folder-id <folder-id> --index 0 [--dry-run]
-          launchnext --cli help
-          launchnext list
-          launchnext snapshot
-          launchnext search --query "mail"
-          launchnext help
+          zerolaunch
+          zerolaunch --gui
+          zerolaunch --tui
+          zerolaunch --cli list
+          zerolaunch --cli snapshot
+          zerolaunch --cli history
+          zerolaunch --cli history --limit 20
+          zerolaunch --cli example
+          zerolaunch --cli search --query "safari"
+          zerolaunch --cli search safari
+          zerolaunch --cli create-folder --path "/Applications/Mail.app" --path "/Applications/Notes.app" [--name "Utilities"] [--index 12] [--dry-run]
+          zerolaunch --cli move --source normal-app --path \"/Applications/Safari.app\" --to normal-index --index 12 [--dry-run]
+          zerolaunch --cli move --source normal-app --path \"/Applications/Safari.app\" --to folder-append --target-folder-id <folder-id> [--dry-run]
+          zerolaunch --cli move --source folder-app --folder-id <folder-id> --path \"/Applications/Safari.app\" --to folder-index --target-folder-id <folder-id> --index 0 [--dry-run]
+          zerolaunch --cli help
+          zerolaunch list
+          zerolaunch snapshot
+          zerolaunch search --query "mail"
+          zerolaunch help
 
         Commands:
           list
@@ -170,15 +170,15 @@ enum LaunchNextCLI {
           - ZeroLaunch GUI must be running for list/snapshot/search/create-folder/move.
           - history/help do not require GUI.
           - "Command line interface" must be ON in General settings.
-          - `launchnext` (without args) enters TUI only in interactive terminal sessions.
+          - `zerolaunch` (without args) enters TUI only in interactive terminal sessions.
           - non-interactive sessions default to GUI unless explicit `--cli` is used.
 
         Agent / non-interactive quick start:
-          launchnext --cli help
-          launchnext --cli list
-          launchnext --cli snapshot
-          launchnext --cli search --query "safari"
-          launchnext --cli move --source normal-app --path "/Applications/Thaw.app" --to folder-append --target-folder-id <folder-id>
+          zerolaunch --cli help
+          zerolaunch --cli list
+          zerolaunch --cli snapshot
+          zerolaunch --cli search --query "safari"
+          zerolaunch --cli move --source normal-app --path "/Applications/Thaw.app" --to folder-append --target-folder-id <folder-id>
         """
         print(text)
     }
@@ -199,7 +199,7 @@ enum LaunchNextCLI {
         print("Version: \(appVersionString())")
         print("Type 'help' for commands.")
 
-        var lineEditor = TUILineEditor(prompt: "launchnext> ",
+        var lineEditor = TUILineEditor(prompt: "zerolaunch> ",
                                        historyPath: cliHistoryFilePath(),
                                        maxHistoryCount: cliHistoryMaxCount)
         lineEditor.loadHistory()
@@ -1101,13 +1101,13 @@ enum LaunchNextCLI {
     private static func printCLIExamples() {
         print([
             "CLI examples:",
-            "  launchnext --cli list",
-            "  launchnext --cli snapshot",
-            "  launchnext --cli history",
-            "  launchnext --cli history --limit 20",
-            "  launchnext --cli search --query \"safari\"",
-            "  launchnext --cli create-folder --path \"/Applications/Mail.app\" --path \"/Applications/Notes.app\" --name \"Work\"",
-            "  launchnext --cli move --source normal-app --path \"/Applications/Safari.app\" --to normal-index --index 12 --dry-run"
+            "  zerolaunch --cli list",
+            "  zerolaunch --cli snapshot",
+            "  zerolaunch --cli history",
+            "  zerolaunch --cli history --limit 20",
+            "  zerolaunch --cli search --query \"safari\"",
+            "  zerolaunch --cli create-folder --path \"/Applications/Mail.app\" --path \"/Applications/Notes.app\" --name \"Work\"",
+            "  zerolaunch --cli move --source normal-app --path \"/Applications/Safari.app\" --to normal-index --index 12 --dry-run"
         ].joined(separator: "\n"))
     }
 

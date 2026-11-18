@@ -6,17 +6,8 @@ enum LaunchNextCLIIPCConfig {
     static let socketFileName = "cli.sock"
 
     static func socketPath() -> String? {
-        let fm = FileManager.default
-        guard let caches = try? fm.url(for: .cachesDirectory,
-                                       in: .userDomainMask,
-                                       appropriateFor: nil,
-                                       create: true) else {
-            return nil
-        }
-        let directory = caches.appendingPathComponent("LaunchNext", isDirectory: true)
-        if !fm.fileExists(atPath: directory.path) {
-            try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
-        }
+        // 目录名跟着 AppIdentity 走，避免和旧版 LaunchNext 抢同一个 socket 文件。
+        guard let directory = AppIdentity.cacheDirectory() else { return nil }
         return directory.appendingPathComponent(socketFileName, isDirectory: false).path
     }
 }
@@ -168,7 +159,7 @@ final class LaunchNextCLIIPCServer {
 
     private let socketPath: String
     private let commandHandler: CommandHandler
-    private let queue = DispatchQueue(label: "io.roversx.launchnext.cli.ipc")
+    private let queue = DispatchQueue(label: "io.zerojs.zerolaunch.cli.ipc")
 
     private var listeningFD: Int32 = -1
     private var acceptSource: DispatchSourceRead?

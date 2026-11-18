@@ -6,6 +6,7 @@ enum UpdaterError: Error, CustomStringConvertible {
     case archive(String)
     case install(String)
     case cancelled
+    case unconfiguredRepository
 
     var description: String {
         switch self {
@@ -19,6 +20,8 @@ enum UpdaterError: Error, CustomStringConvertible {
             return message
         case .cancelled:
             return "Operation cancelled"
+        case .unconfiguredRepository:
+            return "Update repository is not configured. Pass --repo owner/repo."
         }
     }
 }

@@ -558,7 +558,7 @@ struct LaunchpadView: View {
         let actualTopPadding = config.isFullscreen ? geo.size.height * config.topPadding : 0
         let actualBottomPadding = config.isFullscreen ? geo.size.height * config.bottomPadding : 0
         let actualHorizontalPadding = config.isFullscreen ? geo.size.width * config.horizontalPadding : 0
-        // 顶部工具区（搜索框 + 右上角按钮）沿用网格的左右留白，而不是系统的
+        // 顶部工具区（搜索框 + 随框按钮）沿用网格的左右留白，而不是系统的
         // 默认 .padding(.horizontal)（约 16pt）—— 两者各留各的，右侧就会差一截。
         //
         // 只对齐「网格内容边缘」即可，不要再加 (列宽 - 图标宽)/2：
@@ -578,7 +578,8 @@ struct LaunchpadView: View {
                         handleHeaderBackgroundTap()
                     }
             }
-            ZStack {
+            // 刷新 / 设置按钮跟在搜索框右侧、随搜索框一起居中；不再单独悬在右上角。
+            HStack(spacing: 14) {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 16, weight: .medium))
@@ -597,45 +598,42 @@ struct LaunchpadView: View {
                 )
                 .frame(maxWidth: 480)
                 .disabled(isFolderOpen)
-                .onChange(of: appStore.searchQuery) {
-                    guard !isFolderOpen else { return }
-                    // 避免在视图更新周期内直接发布变化，推迟到下一循环
-                    let maxPageIndex = max(pages.count - 1, 0)
-                    DispatchQueue.main.async {
-                        appStore.currentPage = 0
-                        if appStore.currentPage > maxPageIndex {
-                            appStore.currentPage = maxPageIndex
-                        }
-                    }
-                    selectedIndex = filteredItems.isEmpty ? nil : 0
-                    isKeyboardNavigationActive = false
-                    clampSelection()
-                }
-                .focused($isSearchFieldFocused)
-                .frame(maxWidth: .infinity)
 
-                // 两个按钮的悬停底衬会向外扩 6pt（见 HeaderToolbarButton），
-                // spacing 只有 8 时两块高亮会叠在一起，看着像连成一条；
-                // 20 能在两个 32pt 图标之间留出约 8pt 的实际空隙。
-                HStack(spacing: 20) {
-                    Spacer()
-                    if appStore.showQuickRefreshButton {
-                        HeaderToolbarButton(
-                            systemImage: "arrow.clockwise.circle",
-                            tint: pageIndicatorAccentColor
-                        ) {
-                            appStore.refresh()
-                        }
-                        .help(appStore.localized(.refresh))
-                    }
+                // 按钮的悬停底衬向外扩 6pt（见 HeaderToolbarButton），14pt 间距够两块高亮不粘连。
+                if appStore.showQuickRefreshButton {
                     HeaderToolbarButton(
-                        systemImage: "ellipsis.circle",
+                        systemImage: "arrow.clockwise.circle",
                         tint: pageIndicatorAccentColor
                     ) {
-                        appStore.isSetting = true
+                        appStore.refresh()
                     }
+                    .help(appStore.localized(.refresh))
+                }
+                HeaderToolbarButton(
+                    systemImage: "ellipsis.circle",
+                    tint: pageIndicatorAccentColor
+                ) {
+                    appStore.isSetting = true
                 }
             }
+            // 铺满整行：头部的「点击空白关窗」catcher 在下面这层 background 里，
+            // 外层不满宽的话，搜索框两侧的空白区域就点不出关窗行为了。
+            .frame(maxWidth: .infinity)
+            .onChange(of: appStore.searchQuery) {
+                guard !isFolderOpen else { return }
+                // 避免在视图更新周期内直接发布变化，推迟到下一循环
+                let maxPageIndex = max(pages.count - 1, 0)
+                DispatchQueue.main.async {
+                    appStore.currentPage = 0
+                    if appStore.currentPage > maxPageIndex {
+                        appStore.currentPage = maxPageIndex
+                    }
+                }
+                selectedIndex = filteredItems.isEmpty ? nil : 0
+                isKeyboardNavigationActive = false
+                clampSelection()
+            }
+            .focused($isSearchFieldFocused)
             .padding(.top)
             .padding(.horizontal, headerHorizontalInset)
             .background(

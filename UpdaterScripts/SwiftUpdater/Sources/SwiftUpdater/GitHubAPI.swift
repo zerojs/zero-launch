@@ -25,10 +25,19 @@ struct ReleaseMetadata: Decodable {
 }
 
 enum GitHubClient {
-    static let owner = "RoversX"
-    static let repo = "LaunchNext"
+    // 兜底仓库。App 启动 updater 时会传 `--repo`，届时以运行时传参为准（见 main）。
+    static var owner: String {
+        AppIdentity.githubOwner
+    }
+    static var repo: String {
+        AppIdentity.githubRepo
+    }
 
     static func latestRelease(tag overrideTag: String?, token: String?) async throws -> ReleaseMetadata {
+        try await latestRelease(tag: overrideTag, token: token, owner: owner, repo: repo)
+    }
+
+    static func latestRelease(tag overrideTag: String?, token: String?, owner: String, repo: String) async throws -> ReleaseMetadata {
         let url: URL
         if let overrideTag, !overrideTag.isEmpty {
             url = URL(string: "https://api.github.com/repos/\(owner)/\(repo)/releases/tags/\(overrideTag)")!

@@ -3,7 +3,12 @@ import Darwin
 
 @main
 struct SwiftUpdater {
-    private static let defaultInstallPath = "/Applications/LaunchNext.app"
+    private static let defaultInstallPath = AppIdentity.defaultInstallPath
+
+    /// 仓库名：App 传的 `--repo owner/repo` 优先，否则用 AppIdentity 兜底。
+    private static func resolvedRepoSlug(from arguments: UpdaterArguments) -> String? {
+        arguments.repoSlug ?? AppIdentity.defaultRepoSlug
+    }
 
     struct UpdateSuccess {
         let message: String
@@ -69,6 +74,13 @@ struct SwiftUpdater {
 
         let installURL = resolvedInstallURL(from: arguments)
 
+        guard let repoSlug = resolvedRepoSlug(from: arguments) else {
+            fputs("Error: update repository is not configured. Pass --repo owner/repo.\n", stderr)
+            exit(1)
+        }
+        let owner = repoSlug.components(separatedBy: "/").first ?? ""
+        let repo = repoSlug.components(separatedBy: "/").dropFirst().first ?? ""
+
         var language = resolveLanguage(current: config, arguments: arguments)
         let prompt = Localization.string("language_prompt", language: language).components(separatedBy: "\n").filter { !$0.isEmpty }
         language = session.selectLanguage(
@@ -84,7 +96,7 @@ struct SwiftUpdater {
         let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"]
         let metadata: ReleaseMetadata
         do {
-            metadata = try await GitHubClient.latestRelease(tag: arguments.tag, token: token)
+            metadata = try await GitHubClient.latestRelease(tag: arguments.tag, token: token, owner: owner, repo: repo)
         } catch {
             session.log("ERROR: \(error)")
             if arguments.emitJSON {
@@ -210,8 +222,13 @@ struct SwiftUpdater {
         if let prefetchedMetadata {
             metadata = prefetchedMetadata
         } else {
-            log("fetching", ["url": releaseURL(arguments.tag)])
-            metadata = try await GitHubClient.latestRelease(tag: arguments.tag, token: token)
+            guard let repoSlug = resolvedRepoSlug(from: arguments) else {
+                throw UpdaterError.unconfiguredRepository
+            }
+            let owner = repoSlug.components(separatedBy: "/").first ?? ""
+            let repo = repoSlug.components(separatedBy: "/").dropFirst().first ?? ""
+            log("fetching", ["url": releaseURL(arguments.tag, owner: owner, repo: repo)])
+            metadata = try await GitHubClient.latestRelease(tag: arguments.tag, token: token, owner: owner, repo: repo)
         }
         log("latest_tag", ["tag": metadata.tagName])
 
@@ -365,11 +382,11 @@ struct SwiftUpdater {
         return nil
     }
 
-    private static func releaseURL(_ tag: String?) -> String {
+    private static func releaseURL(_ tag: String?, owner: String, repo: String) -> String {
         if let tag, !tag.isEmpty {
-            return "https://api.github.com/repos/\(GitHubClient.owner)/\(GitHubClient.repo)/releases/tags/\(tag)"
+            return "https://api.github.com/repos/\(owner)/\(repo)/releases/tags/\(tag)"
         }
-        return "https://api.github.com/repos/\(GitHubClient.owner)/\(GitHubClient.repo)/releases/latest"
+        return "https://api.github.com/repos/\(owner)/\(repo)/releases/latest"
     }
 
     private static func relaunchApp(at url: URL, language: String, session: CursesSession?) {

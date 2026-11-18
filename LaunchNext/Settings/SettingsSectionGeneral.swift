@@ -93,8 +93,8 @@ extension SettingsView {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Divider()
-            cliCommandRow("launchnext --cli help")
-            cliCommandRow("launchnext --tui")
+            cliCommandRow("zerolaunch --cli help")
+            cliCommandRow("zerolaunch --tui")
             DisclosureGroup(
                 isExpanded: $showCLIFullPathCommand,
                 content: {

@@ -413,9 +413,9 @@ final class AppStore: ObservableObject {
     static let gestureSelectedDeviceIDsKey = "gestureSelectedDeviceIDs"
     static let gestureShowAllInputDevicesKey = "gestureShowAllInputDevices"
     static let searchDebounceMillisecondsRange: ClosedRange<Double> = 100...600
-    private static let cliShimMarker = "# LaunchNext CLI shim"
-    private static let cliPathSnippetHeader = "# >>> LaunchNext CLI >>>"
-    private static let cliPathSnippetFooter = "# <<< LaunchNext CLI <<<"
+    private static let cliShimMarker = "# ZeroLaunch CLI shim"
+    private static let cliPathSnippetHeader = "# >>> ZeroLaunch CLI >>>"
+    private static let cliPathSnippetFooter = "# <<< ZeroLaunch CLI <<<"
     static let backgroundStyleKey = "launchpadBackgroundStyle"
     static let backgroundImageEnabledKey = "launchpadBackgroundImageEnabled"
     static let backgroundImageSourceKey = "launchpadBackgroundImageSource"
@@ -569,8 +569,8 @@ final class AppStore: ObservableObject {
     private static let defaultLaunchpadOpenSound = "Submarine"
     private static let defaultLaunchpadCloseSound = "Glass"
     private static let defaultNavigationSound = "Tink"
-    fileprivate static let updateNotificationCategoryIdentifier = "launchnext.update.category"
-    fileprivate static let updateNotificationDownloadActionIdentifier = "launchnext.update.download"
+    fileprivate static let updateNotificationCategoryIdentifier = "zerolaunch.update.category"
+    fileprivate static let updateNotificationDownloadActionIdentifier = "zerolaunch.update.download"
     private var hasConfiguredUpdateNotifications = false
 
     private var lastUpdateCheck: Date? {
@@ -3047,10 +3047,10 @@ final class AppStore: ObservableObject {
     private func cliCommandTargets() -> [String] {
         let homePath = FileManager.default.homeDirectoryForCurrentUser.path
         return [
-            "/opt/homebrew/bin/launchnext",
-            "/usr/local/bin/launchnext",
-            "\(homePath)/.local/bin/launchnext",
-            "\(homePath)/bin/launchnext"
+            "/opt/homebrew/bin/zerolaunch",
+            "/usr/local/bin/zerolaunch",
+            "\(homePath)/.local/bin/zerolaunch",
+            "\(homePath)/bin/zerolaunch"
         ]
     }
 
@@ -3093,14 +3093,14 @@ final class AppStore: ObservableObject {
         ZeroLaunch CLI
         
         Usage:
-          launchnext --help
-          launchnext --gui
-          launchnext --tui
-          launchnext --cli help
-          launchnext --cli list
-          launchnext --cli snapshot
-          launchnext --cli search --query "safari"
-          launchnext --cli move --source normal-app --path "/Applications/Thaw.app" --to folder-append --target-folder-id <folder-id>
+          zerolaunch --help
+          zerolaunch --gui
+          zerolaunch --tui
+          zerolaunch --cli help
+          zerolaunch --cli list
+          zerolaunch --cli snapshot
+          zerolaunch --cli search --query "safari"
+          zerolaunch --cli move --source normal-app --path "/Applications/Thaw.app" --to folder-append --target-folder-id <folder-id>
         
         Notes:
           - Keep `--cli --help` and `--cli help` for full in-app CLI help.
@@ -3143,7 +3143,8 @@ final class AppStore: ObservableObject {
                 return true
             }
             if let destination = try? fileManager.destinationOfSymbolicLink(atPath: shimPath),
-               destination.contains("/LaunchNext.app/Contents/MacOS/LaunchNext") {
+               destination.contains("/ZeroLaunch.app/Contents/MacOS/ZeroLaunch")
+                || destination.contains("/LaunchNext.app/Contents/MacOS/LaunchNext") {
                 return true
             }
             return false
@@ -3209,7 +3210,7 @@ final class AppStore: ObservableObject {
     private func legacyCLIPathSnippet(directory: String) -> String {
         """
         
-        # LaunchNext CLI
+        # ZeroLaunch CLI
         if [[ ":$PATH:" != *":\(directory):"* ]]; then
           export PATH="\(directory):$PATH"
         fi
@@ -6763,15 +6764,8 @@ final class AppStore: ObservableObject {
     }
 
     private static func ensureAppSupportDirectory() -> URL {
-        let fm = FileManager.default
-        if let base = try? fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
-            let dir = base.appendingPathComponent("LaunchNext", isDirectory: true)
-            if !fm.fileExists(atPath: dir.path) {
-                try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-            }
-            return dir
-        }
-        return URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        // 目录名、首次启动的旧数据搬迁都在 AppIdentity 里，改名只改那一处。
+        AppIdentity.appSupportDirectory()
     }
 
     private static var customIconFileURL: URL {
@@ -7412,7 +7406,12 @@ final class AppStore: ObservableObject {
     }
 
     private func fetchLatestRelease() async throws -> GitHubRelease {
-        let url = URL(string: "https://api.github.com/repos/RoversX/LaunchNext/releases/latest")!
+        // 仓库地址集中在 AppIdentity：留空时直接抛错，避免误拉上游原作者的 release。
+        guard let url = AppIdentity.latestReleaseURL() else {
+            throw URLError(.unsupportedURL, userInfo: [
+                NSLocalizedDescriptionKey: "Update source is not configured. Set AppIdentity.githubOwner / githubRepo."
+            ])
+        }
         var request = URLRequest(url: url)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
@@ -7468,7 +7467,7 @@ final class AppStore: ObservableObject {
         enqueueUpdateNotification(
             title: localized(.updateAvailable),
             body: "\(localized(.newVersion)) 9.9.9-test",
-            releaseURL: URL(string: "https://closex.org/launchnext/")
+            releaseURL: AppIdentity.releasesPageURL
         )
     }
 
@@ -7537,10 +7536,7 @@ final class AppStore: ObservableObject {
     @MainActor
     func openUpdaterConfigFile() {
         let fm = FileManager.default
-        let baseDirectory = fm.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library")
-            .appendingPathComponent("Application Support")
-            .appendingPathComponent("LaunchNext")
+        let baseDirectory = AppIdentity.appSupportDirectory()
             .appendingPathComponent("updates", isDirectory: true)
         let configURL = baseDirectory.appendingPathComponent("config.json", isDirectory: false)
         let supportedLanguages = ["de", "en", "es", "fr", "it", "hi", "ja", "ko", "ru", "vi", "zh", "zh-Hant"]
@@ -7608,13 +7604,20 @@ final class AppStore: ObservableObject {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
 
-        let assetPattern = "LaunchNext.*\\.zip"
+        // 资产名规则跟着 AppIdentity 走：release 里的 zip 必须叫 `ZeroLaunch<版本>.zip`。
+        let assetPattern = AppIdentity.releaseAssetPattern
         let bundlePath = Bundle.main.bundlePath
 
         var arguments: [String] = ["-na", "Terminal", "--args", updaterURL.path]
 
         if !tag.isEmpty {
             arguments.append(contentsOf: ["--tag", tag])
+        }
+
+        // 把仓库直接传给 updater：updater 是独立包，自己那份常量只能当兜底，
+        // 这里传了就以这里为准，避免两处常量不一致。
+        if let repoSlug = AppIdentity.githubRepoSlug {
+            arguments.append(contentsOf: ["--repo", repoSlug])
         }
 
         arguments.append(contentsOf: [

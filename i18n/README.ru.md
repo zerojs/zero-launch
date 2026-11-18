@@ -1,34 +1,36 @@
-# LaunchNext
+# ZeroLaunch
 
 **Языки**: [English](../README.md) | [简体中文](README.zh.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Français](README.fr.md) | [Español](README.es.md) | [Deutsch](README.de.md) | [Русский](README.ru.md) | [हिन्दी](README.hi.md) | [Tiếng Việt](README.vi.md) | [Italiano](README.it.md) | [Čeština](README.cs.md)
 
 ## 📥 Скачать
 
-**[Скачать здесь](https://github.com/RoversX/LaunchNext/releases/latest)** - Получить последнюю версию
+**[Скачать здесь](https://github.com/zerojs/zero-launch/releases/latest)** - Получить последнюю версию
 
-🌐 **Сайт**: [closex.org/launchnext](https://closex.org/launchnext/)  
-📚 **Документация**: [docs.closex.org/launchnext](https://docs.closex.org/launchnext/)
+🌐 **Сайт**: [www.zerojs.cn](https://www.zerojs.cn/)  
+📚 **Документация**: [www.zerojs.cn](https://www.zerojs.cn/)
 
-⭐ Рассмотрите возможность поставить звезду [LaunchNext](https://github.com/RoversX/LaunchNext) и особенно оригинальному проекту [LaunchNow](https://github.com/ggkevinnnn/LaunchNow)!
+⭐ Рассмотрите возможность поставить звезду [ZeroLaunch](https://github.com/zerojs/zero-launch) и особенно оригинальному проекту [LaunchNow](https://github.com/ggkevinnnn/LaunchNow)!
 
 | | |
 |:---:|:---:|
 | ![](../public/banner.webp) | ![](../public/setting1.webp) |
 | ![](../public/setting2.webp) | ![](../public/setting3.webp) |
 
-macOS Tahoe убрала launchpad, и им так сложно пользоваться, он не использует ваш Bio GPU. Пожалуйста, Apple, хотя бы дайте людям возможность переключиться обратно. А пока, вот LaunchNext.
+macOS Tahoe убрала launchpad, и им так сложно пользоваться, он не использует ваш Bio GPU. Пожалуйста, Apple, хотя бы дайте людям возможность переключиться обратно. А пока, вот ZeroLaunch.
 
 *Создано на основе [LaunchNow](https://github.com/ggkevinnnn/LaunchNow) от ggkevinnnn — огромное спасибо оригинальному проекту!❤️*
 
-*LaunchNow выбрал лицензию GPL 3. LaunchNext следует тем же условиям лицензии.*
+*ZeroLaunch разработан на основе [LaunchNext](https://github.com/RoversX/LaunchNext) (автор RoversX) — спасибо оригинальному проекту!❤️*
+
+*LaunchNow выбрал лицензию GPL 3. ZeroLaunch следует тем же условиям лицензии.*
 
 ⚠️ **Если macOS блокирует приложение, выполните это в Терминале:**
 ```bash
-sudo xattr -r -d com.apple.quarantine /Applications/LaunchNext.app
+sudo xattr -r -d com.apple.quarantine /Applications/ZeroLaunch.app
 ```
-**Почему**: Я не могу позволить себе сертификат разработчика Apple ($99/год), поэтому macOS блокирует неподписанные приложения. Эта команда удаляет флаг карантина, чтобы позволить запуск. **Используйте эту команду только для доверенных приложений.**
+**Почему**: Сертификат разработчика Apple ($99/год) пока не приобретён, поэтому macOS блокирует неподписанные приложения. Эта команда удаляет флаг карантина, чтобы позволить запуск. **Используйте эту команду только для доверенных приложений.**
 
-## Что дает LaunchNext
+## Что дает ZeroLaunch
 
 - ✅ **Импорт в один клик из старого системного Launchpad** - напрямую читает нативную SQLite-базу Launchpad и восстанавливает папки, позиции приложений и компоновку
 - ✅ **Ручная организация приложений** - перемещайте приложения, создавайте папки и сохраняйте нужную вам структуру
@@ -36,7 +38,7 @@ sudo xattr -r -d com.apple.quarantine /Applications/LaunchNext.app
 - ✅ **Компактный и полноэкранный режимы** - с поддержкой раздельных настроек
 - ✅ **Клавиатурный workflow** - быстрый поиск, навигация и запуск
 - ✅ **Поддержка CLI / TUI** - просматривайте и управляйте компоновкой из терминала
-- ✅ **Активация через Hot Corner и нативные жесты** - несколько способов глобально открыть LaunchNext
+- ✅ **Активация через Hot Corner и нативные жесты** - несколько способов глобально открыть ZeroLaunch
 - ✅ **Перетаскивание приложений прямо в Dock** - доступно в движке Core Animation
 - ✅ **Центр обновлений с Markdown release notes** - более богатый встроенный опыт обновлений
 - ✅ **Инструменты резервного копирования и восстановления** - более безопасный экспорт и возврат данных
@@ -56,12 +58,12 @@ sudo xattr -r -d com.apple.quarantine /Applications/LaunchNext.app
 Данные приложения хранятся здесь:
 
 ```text
-~/Library/Application Support/LaunchNext/Data.store
+~/Library/Application Support/ZeroLaunch/Data.store
 ```
 
 ## Нативная интеграция с Launchpad
 
-LaunchNext может напрямую читать системную базу Launchpad:
+ZeroLaunch может напрямую читать системную базу Launchpad:
 
 ```bash
 /private$(getconf DARWIN_USER_DIR)com.apple.dock.launchpad/db/db
@@ -79,8 +81,8 @@ LaunchNext может напрямую читать системную базу 
 
 1. **Клонируйте репозиторий**
    ```bash
-   git clone https://github.com/RoversX/LaunchNext.git
-   cd LaunchNext
+   git clone https://github.com/zerojs/zero-launch.git
+   cd ZeroLaunch
    ```
 
 2. **Откройте в Xcode**
@@ -109,7 +111,7 @@ xcodebuild -project LaunchNext.xcodeproj -scheme LaunchNext -configuration Relea
 
 ### Начало работы
 
-1. LaunchNext при первом запуске сканирует все установленные приложения
+1. ZeroLaunch при первом запуске сканирует все установленные приложения
 2. Импортируйте старый layout Launchpad или начните с пустого layout
 3. Используйте поиск, клавиатуру, drag-and-drop и папки для организации приложений
 4. Откройте Настройки, чтобы настроить движок, режим отображения, способы активации и автоматизацию
@@ -124,22 +126,22 @@ xcodebuild -project LaunchNext.xcodeproj -scheme LaunchNext -configuration Relea
 
 - **Legacy Engine** - сохраняет старый путь рендеринга для максимальной совместимости
 - **Next Engine + Core Animation** - рекомендуется для лучшего общего опыта и новых функций
-- **Компактный / Полноэкранный** - LaunchNext поддерживает оба режима и может хранить отдельные настройки
+- **Компактный / Полноэкранный** - ZeroLaunch поддерживает оба режима и может хранить отдельные настройки
 
 ## Ключевые возможности
 
 ### Активация и ввод
 
-- **Поддержка Hot Corner** - открывайте LaunchNext из настраиваемого угла экрана
+- **Поддержка Hot Corner** - открывайте ZeroLaunch из настраиваемого угла экрана
 - **Экспериментальная поддержка нативных жестов** - действия pinch / tap четырьмя пальцами
-- **Поддержка глобальных горячих клавиш** - открывайте LaunchNext откуда угодно
+- **Поддержка глобальных горячих клавиш** - открывайте ZeroLaunch откуда угодно
 - **Перетаскивание в Dock** - передавайте приложения прямо в Dock macOS через движок Core Animation
 
 ### Автоматизация и workflow для продвинутых пользователей
 
 - **Поддержка CLI / TUI** - просматривайте компоновки, ищите приложения, создавайте папки, перемещайте приложения и автоматизируйте workflow
 - **Подходит для agent workflow** - хорошо работает с терминальными AI agent и shell-автоматизацией
-- **Включение командной строки из Настроек** - можно установить или удалить управляемую команду `launchnext`
+- **Включение командной строки из Настроек** - можно установить или удалить управляемую команду `zerolaunch`
 
 ### Обновления
 
@@ -156,7 +158,7 @@ xcodebuild -project LaunchNext.xcodeproj -scheme LaunchNext -configuration Relea
 ### Доступность и навигация
 
 - **Голосовая поддержка** - озвучивание приложений и папок при навигации
-- **Поддержка контроллера** - управляйте LaunchNext и папками с игрового контроллера
+- **Поддержка контроллера** - управляйте ZeroLaunch и папками с игрового контроллера
 - **Клавиатурное взаимодействие** - быстрый поиск и навигация без мыши
 
 ## Производительность и стабильность
@@ -177,7 +179,7 @@ A: Убедитесь, что у вас macOS 26 или новее, при не�
 A: `Next Engine + Core Animation` рекомендуется для лучшего опыта. Используйте `Legacy Engine` только если вам действительно нужен старый путь совместимости.
 
 **Q: Почему команда CLI еще не существует?**  
-A: Сначала включите интерфейс командной строки в Настройках. LaunchNext может установить и удалить управляемый shim `launchnext` за вас.
+A: Сначала включите интерфейс командной строки в Настройках. ZeroLaunch может установить и удалить управляемый shim `zerolaunch` за вас.
 
 ## Вклад
 
@@ -199,13 +201,13 @@ A: Сначала включите интерфейс командной стр�
 
 ## Будущее управления приложениями
 
-Пока Apple уходит от настраиваемых лаунчеров приложений, LaunchNext старается сохранить ручную организацию, контроль пользователя и быстрый доступ на современном macOS.
+Пока Apple уходит от настраиваемых лаунчеров приложений, ZeroLaunch старается сохранить ручную организацию, контроль пользователя и быстрый доступ на современном macOS.
 
-**LaunchNext** — это не просто замена Launchpad, а практичный ответ на деградацию рабочего процесса.
+**ZeroLaunch** — это не просто замена Launchpad, а практичный ответ на деградацию рабочего процесса.
 
 ---
 
-**LaunchNext** - Верните контроль над своим лаунчером приложений 🚀
+**ZeroLaunch** - Верните контроль над своим лаунчером приложений 🚀
 
 *Для пользователей macOS, которые не хотят идти на компромисс в настройке интерфейса.*
 
@@ -219,4 +221,4 @@ A: Сначала включите интерфейс командной стр�
 
 - Экспериментальная поддержка жестов построена на [OpenMultitouchSupport](https://github.com/Kyome22/OpenMultitouchSupport) и форке [KrishKrosh](https://github.com/KrishKrosh/OpenMultitouchSupport).❤️
 
-![GitHub downloads](https://img.shields.io/github/downloads/RoversX/LaunchNext/total)
+![GitHub downloads](https://img.shields.io/github/downloads/zerojs/zero-launch/total)

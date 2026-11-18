@@ -12,12 +12,7 @@ struct UpdaterConfig: Codable {
 
 enum ConfigManager {
     static var baseDirectory: URL {
-        let fm = FileManager.default
-        return fm.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library")
-            .appendingPathComponent("Application Support")
-            .appendingPathComponent("LaunchNext")
-            .appendingPathComponent("updates")
+        AppIdentity.baseDirectory
     }
 
     static var configURL: URL {
