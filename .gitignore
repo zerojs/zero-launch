@@ -8,6 +8,8 @@ build/
 DerivedData/
 .build/
 dist/
+*.profraw
+*.profdata
 
 # macOS
 .DS_Store
