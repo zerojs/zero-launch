@@ -29,6 +29,13 @@ enum AppIdentity {
         !githubOwner.isEmpty && !githubRepo.isEmpty
     }
 
+    /// 是否在设置侧栏露出「更新」入口。
+    ///
+    /// 当前 `githubRepo` 还没有发布任何 Release，`/releases/latest` 恒为 404，
+    /// 进去只会看到「还没有发布任何版本」。入口实现（SettingsSectionUpdates）完整保留，
+    /// 发第一版 Release 后把这里改回 `true` 即可恢复，无需改动其它代码。
+    static let showsUpdatesEntry = false
+
     /// 传给内置 SwiftUpdater 的 `--repo owner/repo` 参数。
     static var githubRepoSlug: String? {
         isUpdateSourceConfigured ? "\(githubOwner)/\(githubRepo)" : nil

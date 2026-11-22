@@ -78,12 +78,19 @@ private struct SemanticVersion: Comparable, Equatable {
     }
 }
 
+/// 更新源仓库还没有发布任何 Release。用一个独立类型区分于网络错误，
+/// 避免把「还没发版」当成失败来弹窗 / 重试。
+private struct UpdateSourceHasNoRelease: Error {}
+
 final class AppStore: ObservableObject {
     enum UpdateState: Equatable {
         case idle
         case checking
         case upToDate(latest: String)
         case updateAvailable(UpdateRelease)
+        /// 更新源仓库还没有发布任何 Release（`/releases/latest` 返回 404）。
+        /// 这属于正常状态，不能当失败提示：否则用户会看到一串 NSURLErrorDomain 文本。
+        case notPublished
         case failed(String)
     }
 
@@ -7400,6 +7407,9 @@ final class AppStore: ObservableObject {
                         )
                     }
                 }
+            } catch is UpdateSourceHasNoRelease {
+                // 仓库还没发过 Release：这是正常状态，不弹失败提示、不重试。
+                await MainActor.run { updateState = .notPublished }
             } catch {
                 await MainActor.run {
                     let message = error.localizedDescription
@@ -7425,8 +7435,15 @@ final class AppStore: ObservableObject {
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
+        // 404 = 仓库还没有发布任何 Release。若直接抛 .badServerResponse，用户看到的
+        // 是「NSURLErrorDomain 错误 -1011」这种天书，还会触发失败弹窗和自动重试。
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        if httpResponse.statusCode == 404 {
+            throw UpdateSourceHasNoRelease()
+        }
+        guard httpResponse.statusCode == 200 else {
             throw URLError(.badServerResponse)
         }
 

@@ -45,7 +45,8 @@ extension SettingsView {
             )
         }
 
-        for entry in SettingsEntry.allCases {
+        // 只搜实际展示的入口：`.updates` 被隐藏时不应该搜得到（点进去也没有侧栏选中态）。
+        for entry in SettingsEntry.visibleCases {
             if foldForSearch(appStore.localized(entry.localizationKey)).contains(query) {
                 append(entry: entry, subpage: entry.subpages[0], matched: nil, rank: 0)
             }

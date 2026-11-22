@@ -59,6 +59,16 @@ extension SettingsView {
                         .foregroundStyle(.secondary)
                 }
 
+            case .notPublished:
+                // 仓库还没发过 Release：不是错误，别用红色警告吓人。
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundStyle(.secondary)
+                    Text(appStore.localized(.updateNoReleaseYet))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                }
+
             case .updateAvailable(let release):
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {

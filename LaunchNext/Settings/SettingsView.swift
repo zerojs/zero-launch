@@ -154,7 +154,7 @@ struct SettingsView: View {
     /// 中文用户不会白白多出一条空白，切到法语/俄语时也不会再被截掉。
     var sidebarWidthForFullLabels: CGFloat {
         let font = NSFont.systemFont(ofSize: Self.sidebarLabelFontSize)
-        let widestLabel = SettingsEntry.allCases.reduce(CGFloat.zero) { widest, entry in
+        let widestLabel = SettingsEntry.visibleCases.reduce(CGFloat.zero) { widest, entry in
             let width = (appStore.localized(entry.localizationKey) as NSString)
                 .size(withAttributes: [.font: font]).width
             return max(widest, width)
@@ -619,7 +619,8 @@ struct SettingsView: View {
             case .appsAndData:
                 return [.appsAndData, .backup]
             case .system:
-                return [.development, .updates, .about]
+                // 「更新」由 AppIdentity.showsUpdatesEntry 控制显隐（仓库还没发 Release 时隐藏）。
+                return [.development, .updates, .about].filter { SettingsEntry.visibleCases.contains($0) }
             }
         }
     }
@@ -639,6 +640,13 @@ struct SettingsView: View {
         case about
 
         var id: String { rawValue }
+
+        /// 侧栏与设置搜索实际展示的入口。
+        /// `.updates` 由 `AppIdentity.showsUpdatesEntry` 控制：仓库还没发 Release 之前
+        /// 隐藏它，免得用户进去只看到「还没有发布任何版本」。
+        static var visibleCases: [SettingsEntry] {
+            allCases.filter { $0 != .updates || AppIdentity.showsUpdatesEntry }
+        }
 
         var subpages: [SettingsSection] {
             switch self {
