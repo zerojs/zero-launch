@@ -50,7 +50,12 @@ struct SettingsView: View {
     @State var showLockLayoutInfoPopover = false
     /// 备份页里被点了「恢复」的那一条。用可选的 BackupEntry 而不是 Bool：
     /// 行是 ForEach 生成的，每行各挂一个弹窗容易串到别行去。
-    @State var pendingBackupRestore: BackupEntry? = nil
+    /// 导入请求、导入范围与结果全部用页内卡片承载，不再走 NSAlert / SwiftUI alert。
+    /// 设置面板本身是 `.sheet`，在它上面再叠任何模态弹窗都可能被 AppKit 静默丢弃，
+    /// 用户看到的就是「点了导入没有任何变化」。页内卡片不参与窗口模态管理，必定可见。
+    @State var pendingImportRequest: ImportRequest? = nil
+    @State var importBanner: ImportBanner? = nil
+    @State var importScope = ImportScope()
     @State var selectedEntry: SettingsEntry = .general
     /// 当前入口内选中的子页；切换入口时重置为该入口的第一个子页。
     @State var selectedSubpage: SettingsSection = .general
@@ -298,6 +303,14 @@ struct SettingsView: View {
         }
         .frame(minWidth: 820, minHeight: 640)
         .background(SettingsWindowAccessor { settingsWindowBox.window = $0 })
+        // 导入确认 / 结果弹窗：挂在根视图最上层，任何页签下点「导入」都看得到。
+        // 用全屏遮罩 + 居中卡片，靠 overlay 铺满整个面板（不能用 alignment: .bottom，
+        // 否则卡片会被压到底部、盖住列表）。
+        .overlay {
+            if pendingImportRequest != nil || importBanner != nil {
+                importOverlayLayer
+            }
+        }
         .alert(appStore.localized(.customIconTitle), isPresented: Binding(get: { iconImportError != nil }, set: { if !$0 { iconImportError = nil } })) {
             Button(appStore.localized(.okButton), role: .cancel) { iconImportError = nil }
         } message: {

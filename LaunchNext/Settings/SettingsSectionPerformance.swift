@@ -136,14 +136,29 @@ extension SettingsView {
         }
     }
 
-    /// 退出并重新拉起当前 app（性能模式切换后使用）。
+    /// 退出并重新拉起当前 app（性能模式切换、导入备份后使用）。
     /// 用 `Bundle.main.bundleURL` 而不是硬编码 /Applications——开发期部署在别的位置也能正确重启。
-    /// 顺序不能反：先 `open -n` 派发新实例，再 terminate 旧实例（terminate 之后没有机会再执行任何代码）。
-    private static func relaunchApp() {
+    ///
+    /// 两个必须避开的坑：
+    /// 1. `open -n` 会在旧实例还没退出时就另起一个新实例 —— 结果两个进程同时在跑，
+    ///    旧实例的设置面板与其上的弹窗留在屏幕上，看起来就是「点了重启但弹窗没关」。
+    ///    所以改成先等旧 PID 真正退出，再用不带 `-n` 的 `open -a` 拉起。
+    /// 2. `NSApp.terminate` 会走 applicationShouldTerminate → 窗口淡出动画后才退出；
+    ///    设置面板（sheet）还挂着时动画可能不回调，进程就永远不退出。调用前先收掉 sheet。
+    static func relaunchApp() {
+        let bundlePath = Bundle.main.bundleURL.path
+        let pid = ProcessInfo.processInfo.processIdentifier
+        // 等旧进程退出（kill -0 在进程不存在时返回非 0），再拉起新实例。
+        let script = "while kill -0 \(pid) 2>/dev/null; do sleep 0.2; done; open -a \"\(bundlePath)\""
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        process.arguments = ["-n", Bundle.main.bundleURL.path]
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", script]
         try? process.run()
+
+        // 先把 sheet 收掉，避免 terminate 卡在淡出动画上。
+        if let sheet = NSApp.windows.first(where: { $0.isSheet }) {
+            sheet.sheetParent?.endSheet(sheet)
+        }
         NSApp.terminate(nil)
     }
 

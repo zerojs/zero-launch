@@ -120,8 +120,14 @@ extension SettingsView {
                             Spacer()
                             // 「恢复」会用这份备份整体替换当前布局（文件夹、排序、
                             // 偏好都在内），且没有撤销，所以只弹确认、不直接执行。
+                            //
+                            // 确认界面由 importDataFolder(from:) 设到
+                            // `pendingImportRequest`，在设置面板底部的页内卡片里呈现。
+                            // 这里刻意不用任何 alert：设置面板本身是 sheet，在它上面
+                            // 再叠一层弹窗（包括在 SwiftUI alert 回调里同步 beginSheetModal）
+                            // 会被 AppKit 静默丢弃，表现为「点了导入没反应」。
                             Button(appStore.localized(.backupImportButton)) {
-                                pendingBackupRestore = entry
+                                importDataFolder(from: entry.url)
                             }
                             .buttonStyle(.bordered)
 
@@ -176,27 +182,13 @@ extension SettingsView {
                 Text(appStore.localized(.resetAlertMessage))
             }
         }
-        // 备份行的「恢复」确认。挂在整页上而不是每一行上：
-        // 行是 ForEach 出来的，逐行挂 alert 时 SwiftUI 只保证最后注册的那个生效，
-        // 很容易出现「点了第 3 行、却弹出第 1 行的确认」。
-        .alert(
-            appStore.localized(.overwriteLayoutConfirmTitle),
-            isPresented: Binding(
-                get: { pendingBackupRestore != nil },
-                set: { if !$0 { pendingBackupRestore = nil } }
-            )
-        ) {
-            Button(appStore.localized(.backupImportButton), role: .destructive) {
-                guard let entry = pendingBackupRestore else { return }
-                pendingBackupRestore = nil
-                importDataFolder(from: entry.url)
-            }
-            Button(appStore.localized(.cancel), role: .cancel) {
-                pendingBackupRestore = nil
-            }
-        } message: {
-            Text(appStore.localized(.overwriteLayoutConfirmMessage))
-        }
+        // 「恢复」的覆盖确认与导入范围选择合并成一张页内卡片（SettingsView 底部的
+        // importOverlayLayer），这里不再挂任何 alert。
+        //
+        // 原因：设置面板自身以 .sheet 呈现，SwiftUI alert 也是一层 sheet。在它的
+        // 按钮回调里同步调用 NSAlert.beginSheetModal，会因为「窗口上已有 sheet」
+        // 被 AppKit 静默拒绝 —— 用户点「导入」后什么都不会发生。页内卡片只是普通
+        // 视图，不参与窗口模态管理，必定可见。
     }
 
     var backupRootURL: URL? {
@@ -271,7 +263,7 @@ extension SettingsView {
             dataStorePath = supportURL.appendingPathComponent("Data.store").path
         } else {
             let home = FileManager.default.homeDirectoryForCurrentUser.path
-            dataStorePath = "\(home)/Library/Application Support/LaunchNext/Data.store"
+            dataStorePath = "\(home)/Library/Application Support/\(AppIdentity.displayName)/Data.store"
         }
         let escapedPath = dataStorePath.replacingOccurrences(of: "\"", with: "\\\"")
         return """
@@ -355,11 +347,10 @@ extension SettingsView {
             backupRefreshToken = UUID()
         }
 
-        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
-            alert.beginSheetModal(for: window, completionHandler: handler)
-        } else {
-            handler(alert.runModal())
-        }
+        // 用 app-modal 而不是 beginSheetModal(for: NSApp.keyWindow)：
+        // 设置面板本身是 sheet，keyWindow 就是那个 sheet 窗口，AppKit 会静默拒绝
+        // 在它上面再挂 sheet —— 表现是点了「删除」完全没有反应。
+        handler(alert.runModal())
     }
 
     func deleteBackup(_ entry: BackupEntry) {
@@ -383,21 +374,18 @@ extension SettingsView {
             }
         }
 
-        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
-            alert.beginSheetModal(for: window, completionHandler: handler)
-        } else {
-            handler(alert.runModal())
-        }
+        // 用 app-modal 而不是 beginSheetModal(for: NSApp.keyWindow)：
+        // 设置面板本身是 sheet，keyWindow 就是那个 sheet 窗口，AppKit 会静默拒绝
+        // 在它上面再挂 sheet —— 表现是点了「删除」完全没有反应。
+        handler(alert.runModal())
     }
 
     func supportDirectoryURL() throws -> URL {
-        let fm = FileManager.default
-        let appSupport = try fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-        let dir = appSupport.appendingPathComponent("LaunchNext", isDirectory: true)
-        if !fm.fileExists(atPath: dir.path) {
-            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        }
-        return dir
+        // 必须与运行时 ModelContainer 的数据目录一致（LaunchpadApp.makePreferredModelContainer
+        // 用的是 AppIdentity.appSupportDirectory）。改名后这里曾硬编码 "LaunchNext"，
+        // 导致备份写进旧目录、导入也写进旧目录，而应用实际读的是 "ZeroLaunch"，
+        // 表现为「点了导入但界面毫无变化」。
+        AppIdentity.appSupportDirectory()
     }
 
     func exportDataFolder() {
@@ -462,204 +450,512 @@ extension SettingsView {
         panel.allowsMultipleSelection = false
         panel.prompt = appStore.localized(.importPrompt)
         panel.message = appStore.localized(.importPanelMessage)
+
+        // 这里必须用 app-modal 的 runModal，不能 beginSheetModal(for: 设置窗口)：
+        // 设置面板自身是一个 sheet，AppKit 拒绝在 sheet 窗口上再挂 sheet，且是
+        // 静默失败（面板永远不出现、回调永不触发）。这正是「点导入没有任何变化」
+        // 的成因，别改回去。
         if panel.runModal() == .OK, let srcDir = panel.url {
             importDataFolder(from: srcDir)
         }
     }
 
-    func importDataFolder(from srcDir: URL) {
-        do {
-            // Validate this is a valid export folder
-            guard isValidExportFolder(srcDir) else { return }
+    /// 把备份 store 里的布局记录（分页/文件夹/排序）迁进当前正在运行的 ModelContext。
+    ///
+    /// 不能直接替换磁盘上的 Data.store：App 启动时已经打开了这个 SQLite 文件（连同
+    /// -wal / -shm，见 LaunchpadApp.makePreferredModelContainer），换掉文件只会让磁盘副本
+    /// 变了，运行中的 container 仍从旧连接读数据 —— 这正是「点了导入却没变化」的根因。
+    /// 记录级迁移写入的是当前 container 本身，导入后立刻对本会话生效，无需重启。
+    func importLayoutRecords(from backupStoreURL: URL) throws -> Int {
+        let configuration = ModelConfiguration(url: backupStoreURL)
+        let backupContainer = try ModelContainer(for: TopItemData.self, PageEntryData.self, configurations: configuration)
+        let backupContext = backupContainer.mainContext
 
-            func performImport(importData: Bool, importPrefs: Bool, allowedPrefKeys: Set<String>) throws {
-                let destDir = try supportDirectoryURL()
-                if importData {
-                    if srcDir.standardizedFileURL != destDir.standardizedFileURL {
-                        try replaceDirectory(with: srcDir, at: destDir)
-                        appStore.applyOrderAndFolders()
-                        appStore.refresh()
-                    }
-                }
-                if importPrefs {
-                    importPreferences(from: srcDir, allowedKeys: allowedPrefKeys.isEmpty ? nil : allowedPrefKeys)
-                    appStore.reloadPreferencesFromDefaults()
-                    appStore.refresh()
-                }
-            }
-
-            // Ask user what to import (attach as sheet to stay on the same screen)
-            let alert = NSAlert()
-            alert.messageText = appStore.localized(.importPrompt)
-            alert.informativeText = appStore.localized(.importPanelMessage)
-            alert.icon = NSApplication.shared.applicationIconImage
-            alert.addButton(withTitle: appStore.localized(.importPrompt)) // Confirm
-            alert.addButton(withTitle: appStore.localized(.cancel))      // Cancel
-
-            let content = NSView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
-
-            func makeCheckbox(_ title: String, state: NSControl.StateValue = .on) -> NSButton {
-                let button = NSButton(checkboxWithTitle: title, target: nil, action: nil)
-                button.state = state
-                button.allowsMixedState = false
-                button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-                button.cell?.wraps = true
-                button.cell?.lineBreakMode = .byWordWrapping
-                return button
-            }
-
-            let dataCheckbox = makeCheckbox("Layout & data")
-            let generalCheckbox = makeCheckbox(appStore.localized(.settingsSectionGeneral))
-            let appearanceCheckbox = makeCheckbox(appStore.localized(.settingsSectionAppearance))
-            let sourcesCheckbox = makeCheckbox(appStore.localized(.settingsSectionAppSources))
-            let hiddenCheckbox = makeCheckbox(appStore.localized(.settingsSectionHiddenApps))
-            let titlesCheckbox = makeCheckbox(appStore.localized(.settingsSectionTitles))
-
-            let stack = NSStackView(views: [
-                dataCheckbox,
-                generalCheckbox,
-                appearanceCheckbox,
-                sourcesCheckbox,
-                hiddenCheckbox,
-                titlesCheckbox
-            ])
-            stack.orientation = .vertical
-            stack.alignment = .leading
-            stack.spacing = 6
-            stack.translatesAutoresizingMaskIntoConstraints = false
-            content.addSubview(stack)
-
-            NSLayoutConstraint.activate([
-                stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 4),
-                stack.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -8),
-                stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 4),
-                stack.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor)
-            ])
-
-            // Size to fit content (min width 320, min height 160)
-            let fitting = stack.fittingSize
-            let minWidth: CGFloat = 320
-            let minHeight: CGFloat = 160
-            content.setFrameSize(NSSize(width: max(minWidth, fitting.width + 16),
-                                        height: max(minHeight, fitting.height + 12)))
-
-            alert.accessoryView = content
-
-            func selectedPrefKeys() -> Set<String> {
-                var keys = Set<String>()
-                if generalCheckbox.state == .on {
-                    keys.insert("preferredLanguage")
-                    keys.insert("appearancePreference")
-                    keys.insert("isStartOnLogin")
-                    keys.insert(AppStore.showQuickRefreshButtonKey)
-                    keys.insert(AppStore.lockLayoutKey)
-                    keys.insert(AppStore.uninstallToolAppPathKey)
-                    keys.insert(AppStore.dockDragSideKey)
-                    keys.insert(AppStore.dockDragTriggerDistanceKey)
-                    keys.insert(AppStore.hotCornerEnabledKey)
-                    keys.insert(AppStore.hotCornerPositionKey)
-                    keys.insert(AppStore.hotCornerTriggerDelayKey)
-                    keys.insert(AppStore.hotCornerHitboxSizeKey)
-                    keys.insert(AppStore.hotCornerToggleWhenOpenKey)
-                    // Experimental gesture backup keys. Remove these together
-                    // with the gesture feature if low-level multitouch support
-                    // is dropped later.
-                    keys.insert(AppStore.gestureEnabledKey)
-                    keys.insert(AppStore.gestureCloseOnPinchOutKey)
-                    keys.insert(AppStore.gestureTapActionKey)
-                    keys.insert(AppStore.gestureFingerCountKey)
-                    keys.insert(AppStore.gestureDeviceSelectionModeKey)
-                    keys.insert(AppStore.gestureSelectedDeviceIDsKey)
-                    keys.insert(AppStore.gestureShowAllInputDevicesKey)
-                }
-                if appearanceCheckbox.state == .on {
-                    keys.insert(AppStore.backgroundStyleKey)
-                    keys.insert(AppStore.backgroundImageEnabledKey)
-                    keys.insert(AppStore.backgroundImageSourceKey)
-                    keys.insert(AppStore.customBackgroundImagePathKey)
-                    keys.insert(AppStore.backgroundMaskEnabledKey)
-                    keys.insert(AppStore.backgroundMaskLightKey)
-                    keys.insert(AppStore.backgroundMaskDarkKey)
-                    keys.insert("scrollSensitivity")
-                    keys.insert("isFullscreenMode")
-                    keys.insert("showLabels")
-                    keys.insert("hideDock")
-                    keys.insert(AppStore.hideMenuBarKey)
-                    keys.insert("enableAnimations")
-                    keys.insert(AppStore.windowOpenAnimationKey)
-                    keys.insert(AppStore.windowAnimationDurationKey)
-                    keys.insert("useLocalizedThirdPartyTitles")
-                    keys.insert("enableDropPrediction")
-                    keys.insert(AppStore.reverseWheelPagingKey)
-                    keys.insert(AppStore.reverseWheelVerticalKey)
-                    keys.insert(AppStore.trackpadVerticalDirectionKey)
-                    keys.insert(AppStore.rememberPageKey)
-                    keys.insert(AppStore.rememberedPageIndexKey)
-                    keys.insert("iconScale")
-                    keys.insert("iconLabelFontSize")
-                    keys.insert(AppStore.iconLabelFontWeightKey)
-                    keys.insert("gridColumnsPerPage")
-                    keys.insert("gridRowsPerPage")
-                    keys.insert("gridColumnSpacing")
-                    keys.insert("gridRowSpacing")
-                    keys.insert("folderDropZoneScale")
-                    keys.insert(AppStore.folderPreviewHighResKey)
-                    keys.insert(AppStore.folderQuickLaunchEnabledKey)
-                    keys.insert(AppStore.folderLayoutModeKey)
-                    keys.insert("pageIndicatorOffset")
-                    keys.insert(AppStore.pageIndicatorTopPaddingKey)
-                    keys.insert(AppStore.pageIndicatorPerDisplayEnabledKey)
-                    keys.insert(AppStore.pageIndicatorPerDisplayOverridesKey)
-                    keys.insert(AppStore.dualModeAppearanceSettingsKey)
-                    keys.insert(AppStore.dockDragEnabledKey)
-                    keys.insert("folderPopoverWidthFactor")
-                    keys.insert("folderPopoverHeightFactor")
-                    keys.insert(AppStore.hoverMagnificationKey)
-                    keys.insert(AppStore.hoverMagnificationScaleKey)
-                    keys.insert(AppStore.activePressEffectKey)
-                    keys.insert(AppStore.activePressScaleKey)
-                    keys.insert("animationDuration")
-                    keys.insert("globalHotKeyConfiguration")
-                    keys.insert(AppStore.useCAGridRendererKey)
-                    keys.insert("showFPSOverlay")
-                    keys.insert("gameControllerEnabled")
-                    keys.insert(AppStore.gameControllerMenuToggleKey)
-                }
-                if hiddenCheckbox.state == .on {
-                    keys.insert(AppStore.hiddenAppsKey)
-                }
-                if sourcesCheckbox.state == .on {
-                    keys.insert(AppStore.customAppSourcesKey)
-                }
-                if titlesCheckbox.state == .on {
-                    keys.insert(AppStore.customTitlesKey)
-                }
-                return keys
-            }
-
-            if let window = NSApp.keyWindow ?? NSApp.mainWindow {
-                alert.beginSheetModal(for: window) { response in
-                    guard response == .alertFirstButtonReturn else { return }
-                    let importData = dataCheckbox.state == .on
-                    let keys = selectedPrefKeys()
-                    let importPrefs = !keys.isEmpty
-                    do {
-                        try performImport(importData: importData, importPrefs: importPrefs, allowedPrefKeys: keys)
-                    } catch {
-                        // Ignore failed import
-                    }
-                }
-            } else {
-                let response = alert.runModal()
-                guard response == .alertFirstButtonReturn else { return }
-                let importData = dataCheckbox.state == .on
-                let keys = selectedPrefKeys()
-                let importPrefs = !keys.isEmpty
-                try performImport(importData: importData, importPrefs: importPrefs, allowedPrefKeys: keys)
-            }
-        } catch {
-            // Ignore errors or surface a user-facing message if desired
+        // 先快照成纯值，避免跨 container 直接持有备份侧的 @Model 对象。
+        let pages = try backupContext.fetch(FetchDescriptor<PageEntryData>()).map {
+            (slotId: $0.slotId, pageIndex: $0.pageIndex, position: $0.position, kind: $0.kind,
+             appPath: $0.appPath, appDisplayName: $0.appDisplayName, folderId: $0.folderId,
+             folderName: $0.folderName, appPaths: $0.appPaths, pinnedAppPaths: $0.pinnedAppPaths,
+             removableSource: $0.removableSource, createdAt: $0.createdAt, updatedAt: $0.updatedAt)
         }
+        let topItems = try backupContext.fetch(FetchDescriptor<TopItemData>()).map {
+            (id: $0.id, kind: $0.kind, orderIndex: $0.orderIndex, appPath: $0.appPath,
+             folderName: $0.folderName, appPaths: $0.appPaths, createdAt: $0.createdAt, updatedAt: $0.updatedAt)
+        }
+        guard !pages.isEmpty || !topItems.isEmpty else {
+            throw NSError(domain: "ZeroLaunchBackup", code: 3,
+                          userInfo: [NSLocalizedDescriptionKey: "Backup contains no layout data."])
+        }
+        guard let liveContext = appStore.modelContext else {
+            throw NSError(domain: "ZeroLaunchBackup", code: 4,
+                          userInfo: [NSLocalizedDescriptionKey: "Data context is not available."])
+        }
+
+        // 分两次 save：先删空再插入，规避 @Attribute(.unique) 的主键冲突。
+        let oldPages = try liveContext.fetch(FetchDescriptor<PageEntryData>())
+        oldPages.forEach { liveContext.delete($0) }
+        let oldTopItems = try liveContext.fetch(FetchDescriptor<TopItemData>())
+        oldTopItems.forEach { liveContext.delete($0) }
+        try liveContext.save()
+
+        for p in pages {
+            liveContext.insert(PageEntryData(
+                slotId: p.slotId, pageIndex: p.pageIndex, position: p.position, kind: p.kind,
+                appPath: p.appPath, folderId: p.folderId, folderName: p.folderName,
+                appPaths: p.appPaths, pinnedAppPaths: p.pinnedAppPaths,
+                appDisplayName: p.appDisplayName, removableSource: p.removableSource,
+                createdAt: p.createdAt, updatedAt: p.updatedAt))
+        }
+        for t in topItems {
+            // kind 由快照原样恢复（folder/app/empty/其它历史值），不能用单一构造器代替。
+            let item = TopItemData(emptyId: t.id, orderIndex: t.orderIndex,
+                                   createdAt: t.createdAt, updatedAt: t.updatedAt)
+            item.kind = t.kind
+            item.appPath = t.appPath
+            item.folderName = t.folderName
+            item.appPaths = t.appPaths
+            liveContext.insert(item)
+        }
+        try liveContext.save()
+        return pages.count + topItems.count
+    }
+
+    // MARK: - 导入（页内卡片，不依赖任何模态窗口）
+
+    /// 把导入全链路写成文件日志。
+    ///
+    /// 用文件而不是只靠 NSLog：`log show` 默认过滤 info 级消息，出问题的时候一条都
+    /// 看不到。文件日志在 `~/Library/Application Support/ZeroLaunch/ImportDebug.log`，
+    /// 无论 UI 表现如何都能事后取证。
+    func importLog(_ message: String) {
+        NSLog("[ZeroLaunchImport] %@", message)
+        guard let dir = try? AppIdentity.appSupportDirectory() else { return }
+        let url = dir.appendingPathComponent("ImportDebug.log")
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        guard let data = "\(stamp) \(message)\n".data(using: .utf8) else { return }
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            try? handle.close()
+        } else {
+            try? data.write(to: url)
+        }
+    }
+
+    struct ImportRequest: Identifiable {
+        let id = UUID()
+        let sourceDir: URL
+        var displayName: String { sourceDir.lastPathComponent }
+    }
+
+    /// 导入范围。默认全部勾选：与原本 LaunchNext 的行为一致（它那 6 个勾选项
+    /// 初始都是 `.on`），备份/恢复的预期就是「整份还原」。
+    struct ImportScope {
+        var layoutData = true
+        var general = true
+        var appearance = true
+        var appSources = true
+        var hiddenApps = true
+        var titles = true
+    }
+
+    enum ImportBanner {
+        case success(title: String)
+        case failure(title: String, detail: String?)
+
+        var isSuccess: Bool {
+            if case .success = self { return true }
+            return false
+        }
+
+        var title: String {
+            switch self {
+            case .success(let title): return title
+            case .failure(let title, _): return title
+            }
+        }
+
+        var detail: String? {
+            switch self {
+            case .success: return nil
+            case .failure(_, let detail): return detail
+            }
+        }
+    }
+
+    /// 备份列表里那条备份的「导入」：先校验，再把确认卡片挂到 `pendingImportRequest`。
+    ///
+    /// 关键在于**不做任何模态弹窗**。设置面板本身就是 `.sheet`，在它上面再叠一层
+    /// alert（SwiftUI 的或 AppKit 的）都可能被系统静默丢弃；设置面板是 SwiftUI
+    /// sheet，在它的按钮回调里同步 `beginSheetModal` 尤其容易被悄悄拒掉 —— 用户
+    /// 看到的就是「点了导入没有任何变化」。页内卡片只是普通视图，不参与窗口模态
+    /// 管理，一定可见、一定可点。
+    func importDataFolder(from srcDir: URL) {
+        importLog("request src=\(srcDir.path)")
+        let storeURL = srcDir.appendingPathComponent("Data.store", isDirectory: false)
+        guard FileManager.default.fileExists(atPath: storeURL.path) else {
+            importLog("validation FAILED: Data.store not found")
+            importBanner = .failure(title: appStore.localized(.importFailedTitle),
+                                    detail: appStore.localized(.importPanelMessage))
+            return
+        }
+        guard isValidExportFolder(srcDir) else {
+            importLog("validation FAILED: store unreadable or contains no layout data")
+            importBanner = .failure(title: appStore.localized(.importFailedTitle),
+                                    detail: appStore.localized(.importPanelMessage))
+            return
+        }
+        importLog("validation OK")
+        importScope = ImportScope()
+        importBanner = nil
+        pendingImportRequest = ImportRequest(sourceDir: srcDir)
+    }
+
+    func cancelPendingImport() {
+        importLog("cancelled by user")
+        pendingImportRequest = nil
+        importBanner = nil
+        importScope = ImportScope()
+    }
+
+    func confirmPendingImport() {
+        guard let request = pendingImportRequest else { return }
+        pendingImportRequest = nil
+        let keys = prefKeys(for: importScope)
+        let importData = importScope.layoutData
+        importLog("confirm src=\(request.sourceDir.path) data=\(importData) prefKeys=\(keys.count)")
+
+        guard importData || !keys.isEmpty else {
+            importLog("aborted: nothing selected")
+            importBanner = .failure(title: appStore.localized(.importFailedTitle), detail: nil)
+            importScope = ImportScope()
+            return
+        }
+
+        do {
+            let destDir = try supportDirectoryURL()
+            guard request.sourceDir.standardizedFileURL != destDir.standardizedFileURL else {
+                importLog("FAILED: source directory == live data directory")
+                importBanner = .failure(title: appStore.localized(.importFailedTitle),
+                                        detail: appStore.localized(.importPanelMessage))
+                importScope = ImportScope()
+                return
+            }
+
+            var restored = 0
+            if importData {
+                let storeURL = request.sourceDir.appendingPathComponent("Data.store", isDirectory: false)
+                restored = try importLayoutRecords(from: storeURL)
+                importLog("restored \(restored) records")
+            }
+
+            if !keys.isEmpty {
+                importPreferences(from: request.sourceDir, allowedKeys: keys)
+                appStore.reloadPreferencesFromDefaults()
+                importLog("preferences imported: \(keys.count) keys")
+            }
+
+            if importData {
+                // 关键：必须走 reloadLayoutAfterImport，不能只 refresh()。
+                // refresh() 会去跑应用对账，且不清 items 与网格布局缓存 —— 会出现
+                // 「日志说导入成功、数据库也确实是备份内容，但桌面排布还是旧的」。
+                appStore.reloadLayoutAfterImport()
+
+                let store = appStore
+                let source = request.sourceDir
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.importLog("applied, items=\(store.items.count) folders=\(store.folders.count)")
+                    self.importLog("order digest=\(self.layoutDigest(store.items))")
+                    self.importLog("backup digest=\(self.backupLayoutDigest(source))")
+                }
+            }
+
+            importBanner = .success(title: importData
+                                    ? "\(appStore.localized(.importSuccessfulTitle)) (\(restored))"
+                                    : appStore.localized(.importSuccessfulTitle))
+        } catch {
+            importLog("FAILED: \(String(describing: error))")
+            importBanner = .failure(title: appStore.localized(.importFailedTitle),
+                                    detail: error.localizedDescription)
+        }
+        importScope = ImportScope()
+    }
+
+    /// 内存里前 12 个槽位的可读摘要，写进日志用来核对「导入后到底按什么顺序渲染」。
+    func layoutDigest(_ items: [LaunchpadItem]) -> String {
+        items.prefix(12).map { item in
+            switch item {
+            case .app(let app): return (app.url.path as NSString).lastPathComponent
+            case .folder(let folder): return "[\(folder.name)]"
+            case .missingApp(let placeholder): return "?\(placeholder.displayName)"
+            case .empty: return "_"
+            }
+        }.joined(separator: ",")
+    }
+
+    /// 备份库里同样前 12 个槽位的摘要，用来和 `layoutDigest` 对照。
+    func backupLayoutDigest(_ sourceDir: URL) -> String {
+        let storeURL = sourceDir.appendingPathComponent("Data.store", isDirectory: false)
+        do {
+            let container = try ModelContainer(for: TopItemData.self, PageEntryData.self,
+                                              configurations: ModelConfiguration(url: storeURL))
+            let rows = try container.mainContext.fetch(FetchDescriptor<PageEntryData>(
+                sortBy: [SortDescriptor(\.pageIndex, order: .forward),
+                         SortDescriptor(\.position, order: .forward)]))
+            return rows.prefix(12).map { row -> String in
+                switch row.kind {
+                case "folder": return "[\(row.folderName ?? "?")]"
+                case "app", "missing":
+                    return ((row.appPath ?? "") as NSString).lastPathComponent
+                default: return "_"
+                }
+            }.joined(separator: ",")
+        } catch {
+            return "unavailable"
+        }
+    }
+
+    /// 偏好设置勾选项 → UserDefaults key 集合。
+    func prefKeys(for scope: ImportScope) -> Set<String> {
+        var keys = Set<String>()
+        if scope.general {
+            keys.insert("preferredLanguage")
+            keys.insert("appearancePreference")
+            keys.insert("isStartOnLogin")
+            keys.insert(AppStore.showQuickRefreshButtonKey)
+            keys.insert(AppStore.lockLayoutKey)
+            keys.insert(AppStore.uninstallToolAppPathKey)
+            keys.insert(AppStore.dockDragSideKey)
+            keys.insert(AppStore.dockDragTriggerDistanceKey)
+            keys.insert(AppStore.hotCornerEnabledKey)
+            keys.insert(AppStore.hotCornerPositionKey)
+            keys.insert(AppStore.hotCornerTriggerDelayKey)
+            keys.insert(AppStore.hotCornerHitboxSizeKey)
+            keys.insert(AppStore.hotCornerToggleWhenOpenKey)
+            // Experimental gesture backup keys. Remove these together
+            // with the gesture feature if low-level multitouch support
+            // is dropped later.
+            keys.insert(AppStore.gestureEnabledKey)
+            keys.insert(AppStore.gestureCloseOnPinchOutKey)
+            keys.insert(AppStore.gestureTapActionKey)
+            keys.insert(AppStore.gestureFingerCountKey)
+            keys.insert(AppStore.gestureDeviceSelectionModeKey)
+            keys.insert(AppStore.gestureSelectedDeviceIDsKey)
+            keys.insert(AppStore.gestureShowAllInputDevicesKey)
+        }
+        if scope.appearance {
+            keys.insert(AppStore.backgroundStyleKey)
+            keys.insert(AppStore.backgroundImageEnabledKey)
+            keys.insert(AppStore.backgroundImageSourceKey)
+            keys.insert(AppStore.customBackgroundImagePathKey)
+            keys.insert(AppStore.backgroundMaskEnabledKey)
+            keys.insert(AppStore.backgroundMaskLightKey)
+            keys.insert(AppStore.backgroundMaskDarkKey)
+            keys.insert("scrollSensitivity")
+            keys.insert("isFullscreenMode")
+            keys.insert("showLabels")
+            keys.insert("hideDock")
+            keys.insert(AppStore.hideMenuBarKey)
+            keys.insert("enableAnimations")
+            keys.insert(AppStore.windowOpenAnimationKey)
+            keys.insert(AppStore.windowAnimationDurationKey)
+            keys.insert("useLocalizedThirdPartyTitles")
+            keys.insert("enableDropPrediction")
+            keys.insert(AppStore.reverseWheelPagingKey)
+            keys.insert(AppStore.reverseWheelVerticalKey)
+            keys.insert(AppStore.trackpadVerticalDirectionKey)
+            keys.insert(AppStore.rememberPageKey)
+            keys.insert(AppStore.rememberedPageIndexKey)
+            keys.insert("iconScale")
+            keys.insert("iconLabelFontSize")
+            keys.insert(AppStore.iconLabelFontWeightKey)
+            keys.insert("gridColumnsPerPage")
+            keys.insert("gridRowsPerPage")
+            keys.insert("gridColumnSpacing")
+            keys.insert("gridRowSpacing")
+            keys.insert("folderDropZoneScale")
+            keys.insert(AppStore.folderPreviewHighResKey)
+            keys.insert(AppStore.folderQuickLaunchEnabledKey)
+            keys.insert(AppStore.folderLayoutModeKey)
+            keys.insert("pageIndicatorOffset")
+            keys.insert(AppStore.pageIndicatorTopPaddingKey)
+            keys.insert(AppStore.pageIndicatorPerDisplayEnabledKey)
+            keys.insert(AppStore.pageIndicatorPerDisplayOverridesKey)
+            keys.insert(AppStore.dualModeAppearanceSettingsKey)
+            keys.insert(AppStore.dockDragEnabledKey)
+            keys.insert("folderPopoverWidthFactor")
+            keys.insert("folderPopoverHeightFactor")
+            keys.insert(AppStore.hoverMagnificationKey)
+            keys.insert(AppStore.hoverMagnificationScaleKey)
+            keys.insert(AppStore.activePressEffectKey)
+            keys.insert(AppStore.activePressScaleKey)
+            keys.insert("animationDuration")
+            keys.insert("globalHotKeyConfiguration")
+            keys.insert(AppStore.useCAGridRendererKey)
+            keys.insert("showFPSOverlay")
+            keys.insert("gameControllerEnabled")
+            keys.insert(AppStore.gameControllerMenuToggleKey)
+        }
+        if scope.hiddenApps {
+            keys.insert(AppStore.hiddenAppsKey)
+        }
+        if scope.appSources {
+            keys.insert(AppStore.customAppSourcesKey)
+        }
+        if scope.titles {
+            keys.insert(AppStore.customTitlesKey)
+        }
+        return keys
+    }
+
+    /// 确认弹窗与结果弹窗共用的底板：材质 + 细描边 + 大阴影，参数化宽度。
+    var importDialogBackground: some View {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(.regularMaterial)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.28), radius: 36, y: 14)
+    }
+
+    /// 导入确认弹窗：遮罩 + 居中卡片。
+    ///
+    /// 早期版本把确认界面做成了页面底部的浮动卡片，会盖住备份列表、位置随内容跑；
+    /// 改成标准居中弹窗（遮罩 + 固定宽度 + 分区标题/内容/按钮栏）后视觉与 AppKit 的
+    /// NSAlert 一致，但仍然是纯 SwiftUI 视图 —— 不参与窗口模态管理，不会被 sheet 吞掉。
+    var importConfirmCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.orange)
+                Text(appStore.localized(.overwriteLayoutConfirmTitle))
+                    .font(.headline)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 18)
+
+            Text(appStore.localized(.overwriteLayoutConfirmMessage))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 20)
+                .padding(.top, 6)
+
+            Divider()
+                .padding(.top, 16)
+
+            VStack(alignment: .leading, spacing: 7) {
+                Toggle(appStore.localized(.importScopeLayoutData), isOn: $importScope.layoutData)
+                Divider()
+                    .padding(.vertical, 3)
+                Toggle(appStore.localized(.settingsSectionGeneral), isOn: $importScope.general)
+                Toggle(appStore.localized(.settingsSectionAppearance), isOn: $importScope.appearance)
+                Toggle(appStore.localized(.settingsSectionAppSources), isOn: $importScope.appSources)
+                Toggle(appStore.localized(.settingsSectionHiddenApps), isOn: $importScope.hiddenApps)
+                Toggle(appStore.localized(.settingsSectionTitles), isOn: $importScope.titles)
+            }
+            .font(.callout)
+            .toggleStyle(.checkbox)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+
+            Divider()
+
+            HStack(spacing: 10) {
+                if let request = pendingImportRequest {
+                    Text(request.displayName)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer(minLength: 12)
+                Button(appStore.localized(.cancel)) { cancelPendingImport() }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.cancelAction)
+                Button(appStore.localized(.backupImportButton)) { confirmPendingImport() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+        }
+        .frame(width: 440)
+        .background(importDialogBackground)
+    }
+
+    /// 导入结果弹窗：和确认弹窗同一套底板，成功/失败只换图标与按钮。
+    @ViewBuilder
+    var importResultCard: some View {
+        if let banner = importBanner {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: banner.isSuccess ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(banner.isSuccess ? Color.green : Color.orange)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(banner.title)
+                            .font(.headline)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if let detail = banner.detail, !detail.isEmpty {
+                            Text(detail)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .padding(20)
+
+                Divider()
+
+                HStack(spacing: 10) {
+                    Spacer(minLength: 0)
+                    Button(appStore.localized(.okButton)) { importBanner = nil }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.defaultAction)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+            }
+            .frame(width: 380)
+            .background(importDialogBackground)
+        }
+    }
+
+    /// 弹窗挂载层：全屏遮罩 + 居中卡片。
+    ///
+    /// 挂在 SettingsView 根视图而不是备份页 —— 另一个入口（应用与数据 → 导入）
+    /// 也走这套流程，挂在内页会导致「在别的页点导入看不到弹窗」。
+    var importOverlayLayer: some View {
+        ZStack {
+            Color.black.opacity(0.30)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if pendingImportRequest != nil {
+                        cancelPendingImport()
+                    } else {
+                        importBanner = nil
+                    }
+                }
+
+            if pendingImportRequest != nil {
+                importConfirmCard
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            } else if importBanner != nil {
+                importResultCard
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: pendingImportRequest?.id)
+        .animation(.easeOut(duration: 0.15), value: importBanner != nil)
     }
 
     // MARK: - Preferences export/import
@@ -870,11 +1166,8 @@ extension SettingsView {
         alert.alertStyle = .warning
         alert.addButton(withTitle: appStore.localized(.okButton))
 
-        if let window = NSApp.keyWindow ?? NSApp.mainWindow {
-            alert.beginSheetModal(for: window)
-        } else {
-            alert.runModal()
-        }
+        // 同上：设置面板是 sheet，不能往 keyWindow 上挂 sheet。
+        alert.runModal()
     }
 
     func isValidExportFolder(_ folder: URL) -> Bool {

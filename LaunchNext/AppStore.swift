@@ -4882,6 +4882,33 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// 导入备份后强制按 store 重建内存布局。
+    ///
+    /// 不能只调 `refresh()`：它不清 items/folders，也不清网格布局缓存，视图可能继续
+    /// 按旧 items 渲染 —— 这正是「提示导入成功、但桌面排布没变」的成因。
+    /// 这里用 resetLayout 的同款手法：先清干净，再从 store 重建。
+    func reloadLayoutAfterImport() {
+        openFolder = nil
+        hasAppliedOrderFromStore = false
+        items.removeAll()
+        folders.removeAll()
+        missingPlaceholders.removeAll()
+        cacheManager.clearAllCaches()
+
+        // loadAllOrder 内部用 DispatchQueue.main.async 才把 items/folders 写回，
+        // 所以后续的刷新必须排到那次赋值之后。
+        loadAllOrder()
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.cacheManager.clearAllCaches()
+            self.currentPage = 0
+            self.triggerFolderUpdate()
+            self.triggerGridRefresh()
+            self.refreshCacheAfterFolderOperation()
+        }
+    }
+
     func resetAppearanceSettings() {
         let defaults = UserDefaults.standard
         let keysToClear: [String] = [

@@ -529,6 +529,8 @@ enum LocalizationKey: String {
     case legacyArchivePanelMessage
     case importSuccessfulTitle
     case importFailedTitle
+    /// 导入范围里的「布局与数据」（分页/文件夹/排序）。
+    case importScopeLayoutData
     case okButton
 
     // 更新检查相关
@@ -846,6 +848,7 @@ final class LocalizationManager {
                 .legacyArchivePanelMessage: "Choose a legacy Launchpad archive (.lmy/.zip) or a db file",
                 .importSuccessfulTitle: "Import Successful",
                 .importFailedTitle: "Import Failed",
+                .importScopeLayoutData: "Layout & data",
                 .okButton: "OK",
 
                 // 更新检查相关
@@ -1131,6 +1134,7 @@ final class LocalizationManager {
             .legacyArchivePanelMessage: "Selecione um arquivo Launchpad Legacy (.lmy/.zip) ou um arquivo db",
             .importSuccessfulTitle: "Importação concluída",
             .importFailedTitle: "Falha na importação",
+            .importScopeLayoutData: "Layout e dados",
             .okButton: "OK",
 
             // Atualizações
@@ -1473,6 +1477,7 @@ final class LocalizationManager {
                 .legacyArchivePanelMessage: "Chọn lưu trữ Launchpad Legacy (.lmy/.zip) hoặc tệp db",
                 .importSuccessfulTitle: "Nhập thành công",
                 .importFailedTitle: "Nhập thất bại",
+                .importScopeLayoutData: "Bố cục & dữ liệu",
                 .okButton: "OK",
 
                 // Cập nhật
@@ -1773,6 +1778,7 @@ final class LocalizationManager {
                 .legacyArchivePanelMessage: "请选择 Legacy Launchpad 归档（.lmy/.zip）或 db 文件",
                 .importSuccessfulTitle: "导入成功",
                 .importFailedTitle: "导入失败",
+                .importScopeLayoutData: "布局与数据",
                 .okButton: "确定",
 
                 // 更新检查相关
@@ -2047,6 +2053,7 @@ final class LocalizationManager {
                 .legacyArchivePanelMessage: "Legacy Launchpad アーカイブ（.lmy/.zip）または db ファイルを選択してください",
                 .importSuccessfulTitle: "インポート成功",
                 .importFailedTitle: "インポート失敗",
+                .importScopeLayoutData: "レイアウトとデータ",
                 .okButton: "OK",
 
                 // 更新検査関連
@@ -2321,6 +2328,7 @@ final class LocalizationManager {
                 .legacyArchivePanelMessage: "Legacy Launchpad 아카이브(.lmy/.zip) 또는 db 파일을 선택해주세요",
                 .importSuccessfulTitle: "가져오기에 성공했어요",
                 .importFailedTitle: "가져오기에 실패했어요",
+                .importScopeLayoutData: "레이아웃 및 데이터",
                 .okButton: "확인",
 
                 // 업데이트 관련
@@ -2591,6 +2599,7 @@ final class LocalizationManager {
                 .legacyArchivePanelMessage: "Sélectionnez une archive Launchpad Legacy (.lmy/.zip) ou un fichier db",
                 .importSuccessfulTitle: "Import réussi",
                 .importFailedTitle: "Import échoué",
+                .importScopeLayoutData: "Disposition et données",
                 .okButton: "OK",
 
                 // Vérification des mises à jour
@@ -2861,6 +2870,7 @@ final class LocalizationManager {
                 .legacyArchivePanelMessage: "Elige un archivo de Launchpad Legacy (.lmy/.zip) o un archivo db",
                 .importSuccessfulTitle: "Importación completada",
                 .importFailedTitle: "Importación fallida",
+                .importScopeLayoutData: "Diseño y datos",
                 .okButton: "OK",
 
                 // Verificación de actualizaciones
@@ -3168,6 +3178,7 @@ final class LocalizationManager {
                 .legacyArchivePanelMessage: "Scegli un archivio Legacy Launchpad (.lmy/.zip) o un file db",
                 .importSuccessfulTitle: "Importazione riuscita",
                 .importFailedTitle: "Importazione fallita",
+                .importScopeLayoutData: "Layout e dati",
                 .okButton: "OK",
 
                 // Controllo aggiornamenti
@@ -3439,6 +3450,7 @@ final class LocalizationManager {
                 .legacyArchivePanelMessage: "Vyberte starší archiv Launchpadu (.lmy/.zip) nebo databázový soubor",
                 .importSuccessfulTitle: "Import úspěšný",
                 .importFailedTitle: "Import selhal",
+                .importScopeLayoutData: "Rozvržení a data",
                 .okButton: "OK",
 
                 // Update
@@ -3710,6 +3722,7 @@ final class LocalizationManager {
                 .legacyArchivePanelMessage: "Wählen Sie ein Legacy-Launchpad-Archiv (.lmy/.zip) oder eine DB-Datei",
                 .importSuccessfulTitle: "Import erfolgreich",
                 .importFailedTitle: "Import fehlgeschlagen",
+                .importScopeLayoutData: "Layout & Daten",
                 .okButton: "OK",
 
                 // Update-Überprüfung
@@ -3981,6 +3994,7 @@ final class LocalizationManager {
                 .legacyArchivePanelMessage: "Выберите архив Legacy Launchpad (.lmy/.zip) или файл db",
                 .importSuccessfulTitle: "Импорт завершён",
                 .importFailedTitle: "Импорт не выполнен",
+                .importScopeLayoutData: "Раскладка и данные",
                 .okButton: "OK",
 
                 // Проверка обновлений
@@ -4823,6 +4837,7 @@ final class LocalizationManager {
             .legacyArchivePanelMessage: "請選擇 Legacy Launchpad 歸檔（.lmy/.zip）或 db 檔案",
             .importSuccessfulTitle: "匯入成功",
             .importFailedTitle: "匯入失敗",
+            .importScopeLayoutData: "佈局與資料",
             .okButton: "確定",
             .checkForUpdates: "檢查更新",
             .checkForUpdatesButton: "檢查更新",
@@ -7142,6 +7157,7 @@ final class LocalizationManager {
             .legacyArchivePanelMessage: "Legacy Launchpad आर्काइव (.lmy/.zip) या db फ़ाइल चुनें",
             .importSuccessfulTitle: "आयात सफल",
             .importFailedTitle: "आयात विफल",
+            .importScopeLayoutData: "लेआउट और डेटा",
             .okButton: "ठीक",
             .checkForUpdates: "अपडेट जाँचें",
             .checkForUpdatesButton: "अपडेट जाँचें",

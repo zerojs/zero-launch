@@ -19,26 +19,40 @@ MacOS Tahoe removed launchpad,and it's so hard to use, it's doesn't use your Bio
 
 *LaunchNow chose the GPL 3 license. LaunchNext and ZeroLaunch follow the same licensing terms.*
 
-### Install with Homebrew 🍺
+## ✨ ZeroLaunch Highlights
 
-```bash
-brew tap zerojs/homebrew-tap
-brew install --cask zerolaunch
-```
+ZeroLaunch is actively developed on top of LaunchNext. Here is what **this fork adds** beyond the original:
 
-ZeroLaunch includes its own updater. The Homebrew cask is mainly for installation and manual upgrades.
+- ⚡ **Engine-level performance overhaul** — layer-tree diffing re-renders only the icons that changed instead of rebuilding 500+ layers; page scrolling feels identical on 60Hz and 120Hz displays; scale-aware icon caching with a bounded cache; incremental persistence (one drag = one disk write)
+- 🗑️ **Long-press uninstall mode** — iOS-style jiggle mode with a safe trash flow and multi-level permission fallbacks (even root-owned App Store apps can be trashed)
+- 📁 **Hover-to-open folders** — hold an app over a folder and it auto-expands after a moment; drop inside to place the app exactly where you want
+- 🧲 **Edge page-flip with edge hints** — drag apps to the screen edge to flip pages with a visual hint bar; blank pages are recycled so clutter never builds up
+- 🎬 **Symmetric open/close animations** — the panel zooms toward center on open and expands outward on close, with a configurable duration
+- 🗂️ **LaunchOS-style folder expansion** — folders grow out of the icon you clicked; one-click rename with an adaptive input box
+- ⚙️ **Fully rebuilt Settings** — in-settings search with keyboard navigation, per-section reset, a Fullscreen/Window scope switcher, and related options grouped into cards
+- 🧹 **Audited, decluttered options** — dead settings removed, unified Fullscreen/Window naming, numeric font-weight slider, live memory usage readout, restart-now shortcut after switching performance mode
+- 🌍 **14 languages** — every new setting ships localized (en, zh-Hans, zh-Hant, ja, ko, fr, es, de, ru, it, cs, pt-BR, vi, hi)
+- 🚢 **Independent distribution** — own bundle ID, `zerolaunch` CLI, built-in self-updater, and release scripts
+- 🛠️ **Real bug fixes** — macOS 26 wallpaper background (localized window matching + file-level fallback), settings sheet losing focus, undersized hit areas on destructive buttons, and more
 
-⚠️ **If macOS blocks the app, run this in Terminal:**
+## 🚀 Installation
+
+### Option 1 — Download the release
+1. Grab `ZeroLaunch<version>.zip` from the [latest release](https://github.com/zerojs/zero-launch/releases/latest)
+2. Unzip and drag `ZeroLaunch.app` into `/Applications`
+3. Launch it — if macOS blocks the app, see the note below
+
+### Option 2 — Build from source
+
+See [Build from Source](#build-from-source) below.
+
+> ⚠️ **If macOS blocks the app, run this in Terminal:**
 ```bash
 sudo xattr -r -d com.apple.quarantine /Applications/ZeroLaunch.app
 ```
 **Why**: ZeroLaunch releases are ad-hoc signed and not notarized yet (no paid Apple Developer membership), so macOS blocks unsigned apps by default. This command removes the quarantine flag to let it run. **Only use this command on apps you trust.** You can also right-click the app → **Open** → confirm.
 
-### Code Signing Status
-
-ZeroLaunch releases are currently **ad-hoc signed, not notarized**. Gatekeeper may warn on first launch; see the command above or use right-click → Open. When a paid Apple Developer membership is added later, releases will move to Developer ID signing + notarization.
-
-Building from source? See [Configure local code signing](#configure-local-code-signing).
+**Code Signing Status**: releases are currently **ad-hoc signed, not notarized**. Gatekeeper may warn on first launch; see the command above or use right-click → Open. When a paid Apple Developer membership is added later, releases will move to Developer ID signing + notarization. Building from source? See [Configure local code signing](#configure-local-code-signing).
 
 ### What ZeroLaunch Delivers
 - ✅ **One-click import from old system Launchpad** - directly reads your native Launchpad SQLite database (`/private$(getconf DARWIN_USER_DIR)com.apple.dock.launchpad/db/db`) to perfectly recreate your existing folders, app positions, and layout
@@ -76,7 +90,7 @@ Reads directly from the system Launchpad database:
 /private$(getconf DARWIN_USER_DIR)com.apple.dock.launchpad/db/db
 ```
 
-## Installation
+## Building from Source
 
 ### Requirements
 - macOS 26 (Tahoe) or later
@@ -140,10 +154,10 @@ xcodebuild -project LaunchNext.xcodeproj -scheme LaunchNext -configuration Relea
 
 
 ### Display Modes
-- **Compact**: Floating window with rounded corners
+- **Window**: Floating window with rounded corners
 - **Fullscreen**: Full-screen mode for maximum visibility
 - **Legacy Engine** and **Next Engine + Core Animation** are available in Settings
-- ZeroLaunch can keep separate settings for fullscreen and compact
+- ZeroLaunch can keep separate settings for fullscreen and window mode
 - Optional fullscreen menu bar hiding is available; macOS also hides the Dock when this is enabled
 
 ## Advanced Features
