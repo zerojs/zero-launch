@@ -13,7 +13,7 @@
 | ![](./public/banner.webp) | ![](./public/setting1.webp) |
 | ![](./public/setting2.webp) | ![](./public/setting3.webp) |
 
-MacOS Tahoe removed launchpad,and it's so hard to use, it's doesn't use your Bio GPU, please apple, at least give people an option to switch back. Before that, here is ZeroLaunch.
+macOS Tahoe removed Launchpad, and the replacement is painful to use — it doesn't even take advantage of your GPU. Apple, please at least give people an option to switch back. Until then, here's ZeroLaunch.
 
 *Built upon [LaunchNext](https://github.com/RoversX/LaunchNext) by RoversX — huge thanks to the original project!❤️ LaunchNext itself is based on [LaunchNow](https://github.com/ggkevinnnn/LaunchNow) by ggkevinnnn.*
 

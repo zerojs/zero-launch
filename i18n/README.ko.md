@@ -4,7 +4,7 @@
 
 ## 📥 다운로드
 
-**[눌러서 다운받기](https://github.com/zerojs/zero-launch/releases/latest)** - 여기서 최신버전을 받을 수 있어요
+**[여기서 다운받기](https://github.com/zerojs/zero-launch/releases/latest)** - 최신 버전 받기
 
 🌐 **웹사이트**: [www.zerojs.cn](https://www.zerojs.cn/)  
 📚 **문서**: [www.zerojs.cn](https://www.zerojs.cn/)
@@ -16,74 +16,96 @@
 | ![](../public/banner.webp) | ![](../public/setting1.webp) |
 | ![](../public/setting2.webp) | ![](../public/setting3.webp) |
 
-macOS Tahoe는 런치패드가 사라졌고, 새로운 인터페이스는 비직관적이며 Bio GPU를 제대로 활용하지 못해요.
-Apple이 런치패드를 다시 제공하는날이 올때, 그때까지 ZeroLaunch를 사용해보세요.
+macOS Tahoe는 런치패드를 없앴고, 그 대안은 쓰기 불편할 뿐 아니라 GPU도 제대로 활용하지 못해요. Apple이 런치패드를 다시 넣어주는 날이 오길 바라며, 그때까지 ZeroLaunch를 사용해보세요.
 
-*[LaunchNow](https://github.com/ggkevinnnn/LaunchNow) (ggkevinnnn 제작)을 기반으로 개발되었어요. 원본 프로젝트에 진심으로 감사드려요!❤️*
+*[LaunchNext](https://github.com/RoversX/LaunchNext)(RoversX 제작)를 기반으로 개발되었어요. 원본 프로젝트에 진심으로 감사드려요!❤️ LaunchNext 자체는 [LaunchNow](https://github.com/ggkevinnnn/LaunchNow)(ggkevinnnn 제작)를 기반으로 해요.*
 
-*ZeroLaunch는 [LaunchNext](https://github.com/RoversX/LaunchNext)(작성자 RoversX)를 기반으로 만들어졌어요. 원 프로젝트에 감사드려요!❤️*
+*LaunchNow는 GPL 3 라이선스를 선택했고, LaunchNext와 ZeroLaunch도 같은 라이선스 조건을 따릅니다.*
 
-*LaunchNow는 GPL 3 라이선스를 선택했습니다. ZeroLaunch도 동일한 라이선스 조건을 따릅니다.*
+## ✨ ZeroLaunch 하이라이트
 
-⚠️ **macOS가 앱을 차단하면 터미널에서 실행하세요:**
+ZeroLaunch는 LaunchNext 위에서 활발히 개발되고 있어요. 다음은 **이 fork가 원본 프로젝트에 추가한 내용**입니다:
+
+- ⚡ **엔진 수준의 성능 개편** — 레이어 트리 diff 방식으로 변경된 아이콘만 다시 그려요(500개 이상의 레이어를 전부 재구성하지 않음); 페이지 스크롤 느낌이 60Hz / 120Hz 디스플레이에서 동일해요; 스케일을 고려한 아이콘 캐시(용량 제한 있음); 증분 저장(드래그 한 번 = 디스크 기록 한 번)
+- 🗑️ **길게 눌러 삭제 모드** — iOS 스타일의 흔들기 모드, 안전한 휴지통 이동, 다단계 권한 폴백(root 소유 App Store 앱도 휴지통으로 보낼 수 있어요)
+- 📁 **마우스를 올리면 폴더 열기** — 앱을 폴더 위에 잠시 올려두면 자동으로 펼쳐지고, 놓으면 원하는 위치에 정확히 배치돼요
+- 🧲 **화면 가장자리 페이지 넘김 + 힌트** — 앱을 화면 가장자리로 드래그하면 시각적 힌트 바와 함께 페이지가 넘어가고, 빈 페이지는 재활용돼서 쌓이지 않아요
+- 🎬 **대칭적인 열기/닫기 애니메이션** — 열 때는 패널이 중앙으로 줌인, 닫을 때는 바깥으로 확장하며, 지속 시간을 설정할 수 있어요
+- 🗂️ **LaunchOS 스타일 폴더 펼치기** — 클릭한 아이콘 위치에서 폴더가 커지며 펼쳐지고, 적응형 입력창으로 한 번에 이름을 바꿀 수 있어요
+- ⚙️ **설정 화면 전면 재구성** — 설정 내 검색과 키보드 탐색, 섹션별 초기화, 전체화면/창 스코프 전환기, 관련 옵션 카드 그룹화
+- 🧹 **검증하고 정리한 옵션** — 불필요한 설정 제거, 전체화면/창 명칭 통일, 숫자 폰트 굵기 슬라이더, 실시간 메모리 사용량 표시, 성능 모드 전환 후 즉시 재시작 단축키
+- 🌍 **14개 언어** — 새 설정 항목은 모두 현지화했어요(en, zh-Hans, zh-Hant, ja, ko, fr, es, de, ru, it, cs, pt-BR, vi, hi)
+- 🚢 **독립 배포 체계** — 자체 Bundle ID, `zerolaunch` CLI, 내장 셀프 업데이터, 릴리즈 스크립트
+- 🛠️ **실제 버그 수정** — macOS 26 배경화면(현지화된 창 매칭 + 파일 단위 폴백), 설정 시트의 포커스 이탈, 위험한 버튼의 히트 영역이 너무 작은 문제 등
+
+## 🚀 설치
+
+### 방법 1 — 릴리즈 다운로드
+1. [최신 릴리즈](https://github.com/zerojs/zero-launch/releases/latest)에서 `ZeroLaunch<버전>.zip`을 받으세요
+2. 압축을 풀고 `ZeroLaunch.app`을 `/Applications`로 드래그하세요
+3. 실행하세요 — macOS가 차단하면 아래를 참고하세요
+
+### 방법 2 — 소스에서 빌드
+
+아래 [소스에서 빌드](#소스에서-빌드)를 참고하세요.
+
+> ⚠️ **macOS가 앱을 차단하면 터미널에서 실행하세요:**
 ```bash
 sudo xattr -r -d com.apple.quarantine /Applications/ZeroLaunch.app
 ```
-**왜요?**: Apple의 개발자 인증서($99/년)를 아직 구매하지 않아서 macOS가 서명되지 않은 앱을 차단해요. 이 명령어는 격리 플래그를 제거해서 앱이 실행되도록 해요 **반드시 신뢰할 수 있는 앱에만 사용하세요.**
+**이유**: ZeroLaunch 릴리즈는 ad-hoc 서명이며 아직 공증되지 않았어요(유료 Apple Developer 멤버십이 없기 때문). 그래서 macOS가 기본적으로 서명되지 않은 앱을 차단해요. 이 명령은 격리 플래그를 제거해 앱이 실행되도록 해요. **신뢰할 수 있는 앱에만 사용하세요.** 앱을 마우스 오른쪽 클릭 → **열기** → 확인을 눌러도 돼요.
 
-## ZeroLaunch가 제공하는 것 😍
+**코드 서명 상태**: 현재 릴리즈는 **ad-hoc 서명, 미공증** 상태예요. 첫 실행 시 Gatekeeper가 경고할 수 있으니 위 명령이나 마우스 오른쪽 클릭 → 열기를 사용하세요. 나중에 유료 Apple Developer 멤버십을 추가하면 Developer ID 서명 + 공증으로 전환할 예정이에요. 소스에서 빌드한다면 [로컬 코드 서명 설정](#configure-local-code-signing)을 참고하세요.
 
-- ✅ **기존 시스템 Launchpad 원클릭 가져오기** - 네이티브 Launchpad SQLite 데이터베이스를 직접 읽어 폴더, 앱 위치, 레이아웃을 복원해요
-- ✅ **수동 앱 정리** - 앱 이동, 폴더 생성, 원하는 레이아웃 유지가 가능해요
-- ✅ **두 가지 렌더링 경로** - 호환성을 위한 `Legacy Engine`, 최고의 경험을 위한 `Next Engine + Core Animation`
-- ✅ **컴팩트 / 전체화면 모드** - 각각 별도 설정을 유지할 수 있어요
-- ✅ **키보드 중심 워크플로우** - 빠른 검색, 탐색, 실행 지원
-- ✅ **CLI / TUI 자동화 지원** - 터미널에서 레이아웃을 확인하고 관리 가능
-- ✅ **Hot Corner와 네이티브 제스처 활성화** - 다양한 전역 실행 방식 제공
-- ✅ **앱을 Dock으로 직접 드래그** - Core Animation 엔진에서 사용 가능
-- ✅ **Markdown 릴리즈 노트를 지원하는 업데이트 센터** - 더 풍부한 인앱 업데이트 경험
-- ✅ **백업 / 복원 도구** - 더 안전한 내보내기와 복구 흐름
-- ✅ **접근성과 컨트롤러 지원** - 음성 피드백과 컨트롤러 탐색 강화
-- ✅ **다국어 지원** - 폭넓은 현지화 제공!!
+### ZeroLaunch가 제공하는 것
 
-## macOS Tahoe가 없애버린 것 🤬
+- ✅ **기존 시스템 Launchpad 원클릭 가져오기** — 네이티브 Launchpad SQLite 데이터베이스(`/private$(getconf DARWIN_USER_DIR)com.apple.dock.launchpad/db/db`)를 직접 읽어 기존 폴더, 앱 위치, 레이아웃을 완벽하게 재현해요
+- ✅ **클래식 Launchpad 경험** — 사랑받았던 원래 인터페이스와 똑같이 동작해요
+- ✅ **다국어 지원** — 영어, 간체 중국어, 번체 중국어, 일본어, 프랑스어, 스페인어, 독일어, 러시아어 등을 완전히 지원해요
+- ✅ **아이콘 라벨 숨기기** — 앱 이름이 필요 없을 때 깔끔하고 미니멀한 화면
+- ✅ **사용자 지정 아이콘 크기** — 원하는 대로 아이콘 크기를 조절하세요
+- ✅ **스마트 폴더 관리** — 예전처럼 폴더를 만들고 정리하세요
+- ✅ **퍼지 검색과 키보드 탐색** — 일부 또는 부정확한 입력으로도 앱을 빠르게 찾아요
+- ✅ **CLI / TUI 지원** — `zerolaunch` 명령으로 터미널에서 레이아웃을 확인하고 조작하세요
+- ✅ **Hot Corner와 네이티브 제스처 지원** — 화면 모서리, 트랙패드 제스처, 4 / 5손가락 옵션으로 열 수 있어요
+- ✅ **앱을 Dock으로 바로 드래그** — Next Engine + Core Animation에서 사용 가능
+- ✅ **Core Animation 폴더** — 폴더 내용이 페이지 및 세로 스크롤 레이아웃을 지원해요
+- ✅ **더 나은 컨텍스트 메뉴** — Finder에서 보기, 앱 경로 복사, 폴더 이름 변경, 설정된 삭제 동작
+- ✅ **Markdown 릴리즈 노트가 있는 업데이트 탭** — 더 풍부한 인앱 업데이트 경험
+- ✅ **백업, 컨트롤러, 음성 지원 개선** — 안정성과 접근성 향상
 
+### macOS Tahoe가 없애버린 것
 - ❌ 커스텀 앱 정리 불가
 - ❌ 커스텀 폴더 생성 불가
 - ❌ 드래그 앤 드롭 사용자화 불가
 - ❌ 시각적 앱 관리 불가
 - ❌ 강제 카테고리 그룹화
 
-## 데이터 저장
-
+### 데이터 저장
 앱 데이터는 다음 위치에 저장돼요:
-
-```text
+```
 ~/Library/Application Support/ZeroLaunch/Data.store
 ```
 
-## 네이티브 Launchpad 통합
-
+### 네이티브 Launchpad 통합
 ZeroLaunch는 시스템 Launchpad 데이터베이스를 직접 읽을 수 있어요:
-
 ```bash
 /private$(getconf DARWIN_USER_DIR)com.apple.dock.launchpad/db/db
 ```
 
-## 설치
+## 소스에서 빌드
 
 ### 요구사항
-
-- macOS 26 (Tahoe) 이상
+- macOS 26(Tahoe) 이상
 - Apple Silicon 또는 Intel 프로세서
-- Xcode 26 (소스에서 빌드할 경우)
+- Xcode 26(소스에서 빌드할 경우)
 
 ### 소스에서 빌드
 
 1. **저장소 복제**
    ```bash
    git clone https://github.com/zerojs/zero-launch.git
-   cd ZeroLaunch
+   cd zero-launch
    ```
 
 2. **Xcode에서 열기**
@@ -91,10 +113,16 @@ ZeroLaunch는 시스템 Launchpad 데이터베이스를 직접 읽을 수 있어
    open LaunchNext.xcodeproj
    ```
 
-3. **빌드 및 실행**
-   - 타겟 디바이스 선택
-   - `⌘+R`로 빌드 및 실행
-   - `⌘+B`로 빌드만 실행
+3. <a name="configure-local-code-signing"></a>**로컬 코드 서명 설정**
+   - ZeroLaunch를 빌드하거나 기여하는 데 유료 Apple Developer 멤버십은 필요하지 않아요.
+   - **LaunchNext 타겟**을 선택하고 **Signing & Capabilities**를 연 뒤, **Team**에 본인 팀(무료 Personal Team도 가능)을 설정하거나 **Team**을 `None`으로 두고 서명 인증서로 `Sign to Run Locally`를 선택하세요.
+   - Hardened Runtime은 켜두세요.
+   - 이 로컬 설정을 바꾸면 Xcode가 프로젝트 파일을 수정된 것으로 표시할 수 있어요. 서명 관련 변경만 한 내용은 Pull Request에 포함하지 마세요.
+
+4. **빌드 및 실행**
+   - `⌘+R`로 실행하려면 실행 대상을 `Any Mac`이 아닌 `My Mac`으로 선택하세요.
+   - `Any Mac (arm64, x86_64)`은 범용 빌드와 아카이브용이라 디버깅을 위해 앱을 실행할 수 없어요.
+   - 빌드만 하려면 `⌘+B`를 누르세요.
 
 ### 명령줄 빌드
 
@@ -103,88 +131,90 @@ ZeroLaunch는 시스템 Launchpad 데이터베이스를 직접 읽을 수 있어
 xcodebuild -project LaunchNext.xcodeproj -scheme LaunchNext -configuration Release
 ```
 
-**유니버설 바이너리 빌드 (Intel + Apple Silicon):**
+**유니버설 바이너리 빌드(Intel + Apple Silicon):**
 ```bash
 xcodebuild -project LaunchNext.xcodeproj -scheme LaunchNext -configuration Release ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO clean build
+```
+
+**릴리즈 패키지(zip + 체크섬, ad-hoc 서명):**
+```bash
+./scripts/release.sh
 ```
 
 ## 사용법
 
 ### 시작하기
-
-1. ZeroLaunch는 첫 실행 시 설치된 앱을 스캔해요
-2. 기존 Launchpad 레이아웃을 가져오거나 빈 레이아웃에서 시작해요
-3. 검색, 키보드 탐색, 마우스 드래그, 폴더로 앱을 정리해요
-4. 설정에서 엔진, 레이아웃 모드, 활성화 방식, 자동화를 구성해요
+1. **첫 실행**: ZeroLaunch가 설치된 앱을 자동으로 스캔해요
+2. **선택**: 클릭해서 선택, 더블클릭으로 실행
+3. **검색**: 입력하면 즉시 앱을 필터링해요
+4. **정리**: 앱을 드래그해 폴더와 사용자 지정 레이아웃을 만드세요
+5. **자동화**: 터미널 작업 흐름이 필요하면 설정에서 CLI를 활성화하세요
 
 ### Launchpad 가져오기
-
-1. 설정 열기
-2. **Import Launchpad** 클릭
+1. 설정(톱니바퀴 아이콘)을 열세요
+2. **"Import Launchpad"**를 클릭하세요
 3. 기존 레이아웃과 폴더가 자동으로 가져와져요
 
-### 엔진과 레이아웃 모드
+### 표시 모드
+- **창**: 둥근 모서리의 플로팅 창
+- **전체화면**: 시야를 최대화하는 전체화면 모드
+- 설정에서 **Legacy Engine**과 **Next Engine + Core Animation**을 선택할 수 있어요
+- ZeroLaunch는 전체화면과 창 모드의 설정을 각각 따로 저장할 수 있어요
+- 전체화면에서 메뉴 바를 숨길 수 있고, 이때 macOS는 Dock도 숨겨요
 
-- **Legacy Engine** - 오래된 렌더링 경로를 유지해 호환성을 우선해요
-- **Next Engine + Core Animation** - 권장해요! 전체 경험과 신기능 지원으로 더 나은 경험을 제공해요
-- **컴팩트 / 전체화면** - 두 모드를 모두 지원하며 각각 별도 설정을 저장할 수 있어요
+## 고급 기능
 
-## 주요 기능
+### 검색과 폴더 경험
+- **퍼지 검색**: 부분 이름, 약어, 부정확한 입력으로 앱을 찾아요
+- **검색 지연 설정**: 설정에서 검색 debounce 시간을 조절하세요
+- **폴더 레이아웃 모드**: Launchpad 스타일 페이지 폴더와 세로 스크롤 폴더 중 선택
+- **Core Animation 폴더 렌더링**: 큰 폴더도 더 부드럽게 조작
 
-### 활성화와 입력
+### 스마트 배경 상호작용
+- 실수로 닫히는 것을 막는 지능형 클릭 감지
+- 상황을 인식하는 제스처 처리
+- 검색 필드 보호
 
-- **Hot Corner 지원** - 설정 가능한 화면 모서리에서 ZeroLaunch 열기
-- **실험적 네이티브 제스처 지원** - 4손가락 pinch / tap 동작
-- **전역 단축키 지원** - 어디서든 ZeroLaunch 열기
-- **Dock으로 드래그** - Core Animation 엔진에서 macOS Dock에 직접 앱 넘기기
+### 성능 최적화
+- **아이콘 캐시**: 부드러운 스크롤을 위한 지능형 이미지 캐싱
+- **지연 로딩**: 메모리를 효율적으로 사용
+- **백그라운드 스캔**: 논블로킹 앱 탐색
 
-### 자동화와 파워유저 워크플로우
+### 자동화와 활성화
+- **CLI / TUI**: `zerolaunch`로 터미널에서 ZeroLaunch를 관리하세요
+- **Hot Corner**: 설정한 화면 모서리에서 ZeroLaunch를 여세요
+- **실험적 네이티브 제스처**: 4 / 5손가락 pinch / tap 동작(외부 트랙패드 기기 선택 포함)
+- **Dock 드래그**: Next Engine + Core Animation에서 앱을 macOS Dock으로 바로 드래그
 
-- **CLI / TUI 지원** - 레이아웃 확인, 앱 검색, 폴더 생성, 앱 이동, 자동화 가능
-- **agent 친화적 워크플로우** - 터미널 기반 AI agent와 shell 자동화에 잘 맞아요
-- **설정에서 명령줄 활성화** - 관리되는 `zerolaunch` 명령을 설치하거나 제거 가능
+### 앱 관리
+- **컨텍스트 메뉴 동작**: Finder에서 보기, 앱 경로 복사, 폴더 이름 변경, 설정된 삭제 도구 사용
 
-### 업데이트 경험
+### 업데이트와 백업 도구
+- **업데이트 탭**: 설정에서 업데이트를 확인하고 Markdown 릴리즈 노트를 읽으세요
+- **백업 도구**: 더 안전하게 백업을 만들고 복원하세요
+- **알림 업데이트**: 최신 알림 API 지원
 
-- **앱 내 업데이트 센터** - 앱을 떠나지 않고 업데이트 확인
-- **Markdown 릴리즈 노트** - 설정 안에서 더 풍부한 릴리즈 노트 표시
-- **최신 알림 API** - 새로운 macOS 알림 경로 지원
-
-### 백업과 복원
-
-- 설정에서 백업 생성 및 복원 가능
-- 더 신뢰할 수 있는 백업 내보내기 동작
-- 임시 파일 및 정리 경로를 더 안전하게 처리
-
-### 접근성과 탐색
-
-- **음성 피드백 지원** - 탐색 중 앱과 폴더 이름을 읽어줘요
-- **컨트롤러 지원** - 게임 컨트롤러로 ZeroLaunch와 폴더를 조작 가능
-- **키보드 중심 상호작용** - 마우스 없이도 빠른 검색과 이동 가능
-
-## 성능과 안정성
-
-- 부드러운 탐색을 위한 지능형 아이콘 캐시
-- 대규모 라이브러리를 위한 지연 로딩과 백그라운드 스캔
-- 설정 및 탐색 흐름 전반의 상태 동기화 개선
-- 업데이트 처리, 백업 내보내기, 제스처 복구의 신뢰성 향상
+### 멀티 디스플레이 지원
+- 화면 자동 감지
+- 디스플레이별 위치 설정
+- 끊김 없는 멀티 모니터 작업 흐름
 
 ## 문제 해결
 
 ### 일반적인 문제
 
-**Q: 앱이 실행되지 않아요**  
-A: macOS 26 이상인지 확인하고, 필요하면 quarantine을 제거한 뒤, 신뢰할 수 있는 빌드를 사용하세요.
+**Q: 앱이 실행되지 않아요?**  
+A: macOS 26.0 이상인지 확인하고 시스템 권한을 점검하세요. Gatekeeper에 차단됐다면 `sudo xattr -r -d com.apple.quarantine /Applications/ZeroLaunch.app`을 실행하거나 마우스 오른쪽 클릭 → 열기를 사용하세요.
 
 **Q: 어떤 엔진을 써야 하나요?**  
-A: `Next Engine + Core Animation` 을 권장해요. 오래된 호환성 경로가 꼭 필요할 때만 `Legacy Engine` 을 사용하세요.
+A: 최고의 경험을 위해 `Next Engine + Core Animation`을 권장해요. 오래된 호환성이 필요하면 `Legacy Engine`을 계속 사용할 수 있어요.
 
 **Q: CLI 명령이 아직 없어요. 왜 그런가요?**  
-A: 먼저 설정에서 명령줄 인터페이스를 활성화하세요. ZeroLaunch가 관리되는 `zerolaunch` shim을 설치하고 제거할 수 있어요.
+A: 먼저 설정에서 명령줄 인터페이스를 활성화하세요. ZeroLaunch가 관리되는 `zerolaunch` 명령을 설치하고 제거할 수 있어요.
 
 ## 기여
 
-기여를 환영해요.
+기여를 환영해요! 다음을 따라주세요:
 
 1. 저장소 포크
 2. 기능 브랜치 생성 (`git checkout -b feature/amazing-feature`)
@@ -193,24 +223,22 @@ A: 먼저 설정에서 명령줄 인터페이스를 활성화하세요. ZeroLaun
 5. Pull Request 열기
 
 ### 개발 가이드라인
-
-- Swift 스타일 규칙을 따라주세요.
-- 복잡한 로직에는 주석을 추가해주세요.
-- 가능하면 여러 macOS 버전에서 테스트해세요.
-- 실험적 기능을 관련없는 파일에 흩뿌리지 마세요.
-- 제거 가능한 통합은 가능하면 분리해주세요.
+- Swift 스타일 규칙을 따르세요
+- 복잡한 로직에는 의미 있는 주석을 추가하세요
+- 여러 macOS 버전에서 테스트하세요
+- 하위 호환성을 유지하세요
 
 ## 앱 관리의 미래
 
-Apple이 커스텀 런처에서 멀어지는 동안, ZeroLaunch는 현대 macOS에서도 수동 정리, 사용자 제어, 빠른 접근을 유지하려고 해요.
+Apple이 커스텀 가능한 인터페이스에서 멀어지는 가운데, ZeroLaunch는 사용자 통제와 개인화를 향한 움직임이에요. 여전히 Apple이 런치패드를 되돌려주길 바랍니다.
 
-**ZeroLaunch**는 단순한 Launchpad 대체제가 아니라, 퇴행한 워크플로우에 대한 실용적인 대응이에요.
+**ZeroLaunch**는 단순한 런치패드 대체제가 아니에요 — 사용자의 선택이 중요하다는 선언입니다.
 
 ---
 
 **ZeroLaunch** - 앱 런처의 주도권을 되찾으세요 🚀
 
-*커스터마이징에 타협따위 안하는 macOS 사용자를 위해.*
+*커스터마이징에 타협하지 않는 macOS 사용자를 위해.*
 
 ## 개발 도구
 
