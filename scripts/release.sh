@@ -6,6 +6,15 @@ PROJECT="LaunchNext.xcodeproj"
 SCHEME="LaunchNext"
 CONFIGURATION="Release"
 
+# 开源项目不绑定任何个人 Team ID（pbxproj 里 DEVELOPMENT_TEAM 为空）。
+# 命令行构建必须显式走 ad-hoc 签名，否则会报 "requires a development team"。
+# 产物在下方还会用 codesign --sign - 再做一次 deep ad-hoc 重签名。
+SIGNING_ARGS=(
+  CODE_SIGN_STYLE=Manual
+  CODE_SIGN_IDENTITY=-
+  CODE_SIGNING_REQUIRED=NO
+)
+
 cd "${ROOT_DIR}"
 
 xcodebuild \
@@ -14,6 +23,7 @@ xcodebuild \
   -configuration "${CONFIGURATION}" \
   ARCHS="arm64 x86_64" \
   ONLY_ACTIVE_ARCH=NO \
+  "${SIGNING_ARGS[@]}" \
   clean build
 
 BUILT_PRODUCTS_DIR="$(xcodebuild \
@@ -22,6 +32,7 @@ BUILT_PRODUCTS_DIR="$(xcodebuild \
   -configuration "${CONFIGURATION}" \
   ARCHS="arm64 x86_64" \
   ONLY_ACTIVE_ARCH=NO \
+  "${SIGNING_ARGS[@]}" \
   -showBuildSettings \
   | awk -F ' = ' '/^[[:space:]]*BUILT_PRODUCTS_DIR = / { print $2 }' \
   | tail -n 1)"

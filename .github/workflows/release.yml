@@ -1,0 +1,44 @@
+name: Release
+
+# 推送形如 1.0.0 / 1.2.3 的 tag 时，自动构建并发布 GitHub Release。
+# 使用 Actions 内置的 GITHUB_TOKEN，无需本地配置任何凭据。
+on:
+  push:
+    tags:
+      - '[0-9]*.[0-9]*.[0-9]*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: macos-26
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build SwiftUpdater
+        run: swift build --configuration release --arch arm64 --arch x86_64 --product SwiftUpdater
+        working-directory: UpdaterScripts/SwiftUpdater
+
+      - name: Build release archive
+        # release.sh 内置 ad-hoc 签名参数；CI runner 无本地沙箱限制，无需 disable-sandbox。
+        run: ./scripts/release.sh
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          DIST="$(find "$HOME/Library/Developer/Xcode/DerivedData" -path '*/Build/dist' -type d -print -quit)"
+          test -n "$DIST" || { echo "dist directory not found" >&2; exit 1; }
+          ls -lh "$DIST"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "ZeroLaunch $GITHUB_REF_NAME" \
+            --generate-notes \
+            "$DIST/ZeroLaunch${GITHUB_REF_NAME}.zip" \
+            "$DIST/checksums.txt"
